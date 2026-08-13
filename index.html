@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>THE SHIP</title>
+<style>
+  :root{
+    --acc:#5fd8ee;
+    --acc2:#ffb765;
+    --bg:#05070c;
+    --panel:rgba(10,16,24,0.82);
+    --line:rgba(120,200,225,0.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:#e8f4fa;
+    user-select:none;-webkit-user-select:none}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:none}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;inset:0;pointer-events:none}
+  #topleft{position:absolute;top:22px;left:26px}
+  #loc{font-size:19px;letter-spacing:2.6px;text-transform:uppercase;
+    text-shadow:0 2px 14px rgba(0,0,0,.85);font-weight:600}
+  #sub{font-size:12.5px;letter-spacing:1.6px;color:#a8c8d8;margin-top:4px;
+    text-shadow:0 2px 10px rgba(0,0,0,.9)}
+  #stats{position:absolute;top:22px;right:26px;display:flex;gap:14px;
+    font-size:14px;letter-spacing:1px;font-variant-numeric:tabular-nums;
+    text-shadow:0 2px 10px rgba(0,0,0,.9)}
+  #stats .mood{color:var(--acc2)}
+
+  #mpBadge{position:absolute;top:56px;right:26px;font-size:11.5px;letter-spacing:.8px;
+    color:#7d9aa8;text-shadow:0 2px 8px #000;transition:.2s}
+  #mpBadge.on{color:#9fe8c8}
+
+  #crosshair{position:fixed;left:50%;top:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;
+    border-radius:50%;border:1.5px solid rgba(230,250,255,.75);
+    box-shadow:0 0 8px rgba(0,0,0,.8);pointer-events:none;transition:.18s}
+  body.building #crosshair{width:15px;height:15px;margin:-7.5px 0 0 -7.5px;
+    border-radius:3px;border-color:var(--acc)}
+
+  #prompt{position:fixed;left:50%;bottom:16%;transform:translateX(-50%) translateY(8px);
+    padding:9px 20px;background:var(--panel);border:1px solid var(--line);
+    border-radius:30px;font-size:15px;letter-spacing:.6px;opacity:0;transition:.16s;
+    backdrop-filter:blur(6px);white-space:nowrap}
+  #prompt.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #prompt b{display:inline-block;min-width:20px;margin-right:8px;padding:1px 7px;
+    background:var(--acc);color:#04212a;border-radius:5px;font-size:13px}
+
+  #toasts{position:fixed;left:50%;bottom:calc(16% + 62px);transform:translateX(-50%);
+    display:flex;flex-direction:column-reverse;align-items:center;gap:8px;width:min(680px,88vw)}
+  .toast{padding:10px 18px;background:rgba(8,14,22,.86);border-left:3px solid var(--acc);
+    border-radius:8px;font-size:14.5px;line-height:1.45;letter-spacing:.3px;
+    animation:in .35s ease-out;backdrop-filter:blur(6px);text-align:center;
+    box-shadow:0 8px 30px rgba(0,0,0,.5)}
+  .toast.out{opacity:0;transform:translateY(-6px);transition:.65s}
+  @keyframes in{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+  #hint{position:fixed;left:26px;bottom:22px;font-size:12px;letter-spacing:1.1px;
+    color:#7d9aa8;line-height:1.8;text-shadow:0 2px 8px #000}
+  #hint b{color:#bfe6f2;font-weight:600}
+
+  /* ---------- paleta budowania ---------- */
+  #palette{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(120%);
+    display:flex;gap:7px;padding:9px;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;transition:.28s cubic-bezier(.2,.9,.3,1);backdrop-filter:blur(8px);
+    pointer-events:auto;flex-wrap:wrap;justify-content:center;max-width:94vw}
+  body.building #palette{transform:translateX(-50%) translateY(0)}
+  .slot{width:72px;padding:8px 4px 6px;border-radius:10px;text-align:center;cursor:pointer;
+    background:rgba(255,255,255,.04);border:1px solid transparent;position:relative;transition:.15s}
+  .slot:hover{background:rgba(255,255,255,.10)}
+  .slot.on{border-color:var(--acc);background:rgba(95,216,238,.16);
+    box-shadow:0 0 18px rgba(95,216,238,.25)}
+  .slot .ic{display:block;font-size:21px;line-height:1.2}
+  .slot .nm{display:block;font-size:10.5px;letter-spacing:.4px;color:#c8dde6;margin-top:3px}
+  .slot .num{position:absolute;top:3px;right:6px;font-size:9.5px;color:#6d8b99}
+  #palette::after{content:'';position:absolute;right:-30px;top:50%;width:18px;height:18px;
+    margin-top:-9px;border-radius:5px;background:var(--swatch,#fff);
+    border:2px solid rgba(255,255,255,.5)}
+
+  /* ---------- nakładki ---------- */
+  .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at center,rgba(6,12,20,.86),rgba(2,4,8,.96));
+    backdrop-filter:blur(7px);z-index:20;padding:24px}
+  .overlay.show{display:flex}
+  .panel{width:min(760px,94vw);max-height:88vh;overflow-y:auto;padding:38px 42px;
+    background:linear-gradient(160deg,rgba(14,22,32,.95),rgba(8,12,20,.95));
+    border:1px solid var(--line);border-radius:18px;
+    box-shadow:0 30px 90px rgba(0,0,0,.7)}
+  .panel h1{font-size:52px;letter-spacing:14px;font-weight:300;text-align:center;
+    background:linear-gradient(180deg,#fff,#7fd8ee);-webkit-background-clip:text;
+    background-clip:text;color:transparent;margin-bottom:6px}
+  .panel h2{font-size:20px;letter-spacing:5px;font-weight:400;color:var(--acc);
+    margin-bottom:18px;text-transform:uppercase}
+  .tagline{text-align:center;color:#8fb4c4;letter-spacing:4px;font-size:12.5px;
+    text-transform:uppercase;margin-bottom:26px}
+  .panel p{color:#c2d8e2;line-height:1.7;font-size:14.5px;margin-bottom:14px}
+  .keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:8px 20px;
+    margin:20px 0 26px}
+  .keys div{display:flex;align-items:center;gap:10px;font-size:13.5px;color:#b8d0dc}
+  kbd{display:inline-block;min-width:26px;padding:3px 8px;background:rgba(95,216,238,.14);
+    border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:12px;
+    text-align:center;color:#dff4fb}
+  button{font-family:inherit;font-size:14px;letter-spacing:2.4px;text-transform:uppercase;
+    padding:13px 30px;background:var(--acc);color:#032029;border:none;border-radius:9px;
+    cursor:pointer;font-weight:600;transition:.16s}
+  button:hover{background:#8ae8fa;transform:translateY(-1px);
+    box-shadow:0 8px 26px rgba(95,216,238,.32)}
+  button.ghost{background:transparent;color:#9fc4d2;border:1px solid var(--line)}
+  button.ghost:hover{background:rgba(95,216,238,.12);color:#dff4fb}
+  .row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+
+  /* ---------- nawigacja ---------- */
+  #navBody{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:14px;
+    margin:22px 0 8px}
+  .card{padding:16px 16px 14px;background:rgba(255,255,255,.045);
+    border:1px solid rgba(120,200,225,.20);border-radius:13px;transition:.18s;
+    display:flex;flex-direction:column}
+  .card:hover{background:rgba(95,216,238,.10);border-color:var(--acc);transform:translateY(-2px)}
+  .card.hot{border-color:var(--acc2);background:rgba(255,183,101,.10)}
+  .card .ct{font-size:16.5px;letter-spacing:1.4px;font-weight:600;margin-bottom:2px}
+  .card .ck{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--acc)}
+  .card.hot .ck{color:var(--acc2)}
+  .card .cd{font-size:12.5px;color:#a8c2ce;line-height:1.55;margin:9px 0 8px;flex:1}
+  .card .cm{font-size:10.5px;color:#6f8f9e;letter-spacing:.5px;margin-bottom:11px}
+  .card button{width:100%;padding:9px;font-size:12px;letter-spacing:2px}
+  .card.hot button{background:var(--acc2);color:#2a1500}
+
+  #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;
+    transition:opacity .85s ease;z-index:30}
+  #fade.on{opacity:1}
+
+  /* ---------- cel misji ---------- */
+  #objective{position:fixed;left:50%;top:74px;transform:translateX(-50%) translateY(-10px);
+    padding:8px 20px 8px 15px;background:rgba(8,14,22,.80);border:1px solid rgba(120,200,225,.28);
+    border-left:3px solid var(--acc2);border-radius:9px;font-size:14px;letter-spacing:.7px;
+    opacity:0;transition:.3s;backdrop-filter:blur(6px);z-index:8;max-width:min(640px,88vw);
+    text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+  #objective.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #objective .mark{color:var(--acc2);margin-right:6px}
+  #objective.pulse{animation:objp 1.2s ease-out}
+  @keyframes objp{0%{transform:translateX(-50%) scale(1.06);
+    box-shadow:0 0 0 rgba(255,183,101,.55)}100%{transform:translateX(-50%) scale(1)}}
+
+  /* ---------- dialog z załogą ---------- */
+  #dialog{position:fixed;left:50%;bottom:13%;transform:translateX(-50%) translateY(14px);
+    width:min(660px,90vw);padding:18px 22px 14px;background:rgba(7,12,20,.90);
+    border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:12px;
+    opacity:0;pointer-events:none;transition:.2s;backdrop-filter:blur(8px);z-index:9;
+    box-shadow:0 14px 50px rgba(0,0,0,.6)}
+  #dialog.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #dialog .who{font-size:13px;letter-spacing:2.4px;text-transform:uppercase;color:var(--acc);
+    margin-bottom:9px}
+  #dialog .who span{color:#6f8f9e;letter-spacing:1.2px;text-transform:none}
+  #dialog .say{font-size:16.5px;line-height:1.6;color:#e8f4fa}
+  #dialog .more{margin-top:11px;font-size:11px;letter-spacing:2px;color:#5f7f8e;text-align:right}
+
+  /* ---------- film / cutscena ---------- */
+  #film{position:fixed;inset:0;z-index:26;display:none;pointer-events:none}
+  #film.show{display:block}
+  #film .bar{position:absolute;left:0;right:0;height:9vh;background:#000;z-index:2}
+  #film .bar.t{top:0}
+  #film .bar.b{bottom:0}
+  #film .scan{position:absolute;inset:0;z-index:3;opacity:.45;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.42) 0 1px,transparent 1px 3px)}
+  #film.soft .scan{opacity:0;}
+  #film .vig{position:absolute;inset:0;z-index:3;
+    background:radial-gradient(ellipse at center,transparent 42%,rgba(0,0,0,.72) 100%)}
+  #film .flick{position:absolute;inset:0;z-index:3;background:rgba(190,215,235,.05);
+    animation:flick 3.1s steps(3) infinite}
+  #film.soft .flick{display:none}
+  @keyframes flick{0%,92%{opacity:.25}94%{opacity:.7}96%{opacity:.1}100%{opacity:.3}}
+  #filmTc{position:absolute;top:calc(9vh + 20px);left:34px;z-index:4;
+    font-family:"Consolas","Courier New",monospace;font-size:14px;letter-spacing:2px;
+    color:#d8e8f0;text-shadow:0 0 10px rgba(0,0,0,.9)}
+  #film.soft #filmTc,#film.soft #filmRec,#film.soft #filmStamp{display:none}
+  #filmRec{position:absolute;top:calc(9vh + 18px);right:34px;z-index:4;
+    font-family:"Consolas",monospace;font-size:14px;letter-spacing:3px;color:#ff6b5c}
+  #filmRec i{display:inline-block;width:10px;height:10px;border-radius:50%;background:#ff3b2f;
+    margin-right:9px;vertical-align:-1px;animation:rec 1.6s infinite}
+  @keyframes rec{0%,55%{opacity:1}56%,100%{opacity:.15}}
+  #filmStamp{position:absolute;top:22vh;right:6vw;z-index:4;transform:rotate(-11deg);
+    padding:9px 18px;border:3px solid rgba(255,80,70,.65);border-radius:5px;
+    color:rgba(255,110,95,.75);font-size:16px;letter-spacing:4px;font-weight:700}
+  #filmText{position:absolute;left:50%;bottom:calc(9vh + 46px);transform:translateX(-50%);
+    z-index:4;width:min(880px,86vw);text-align:center}
+  #filmText .l1{display:block;font-size:23px;letter-spacing:1.6px;line-height:1.5;
+    color:#f0f8ff;text-shadow:0 3px 22px rgba(0,0,0,.95)}
+  #filmText .l2{display:block;margin-top:11px;font-size:14px;letter-spacing:3px;
+    text-transform:uppercase;color:#ff9a8a;text-shadow:0 2px 14px rgba(0,0,0,.95)}
+  #filmText.in{animation:ftin .8s ease-out}
+  @keyframes ftin{from{opacity:0;transform:translateX(-50%) translateY(12px)}
+    to{opacity:1;transform:translateX(-50%) translateY(0)}}
+  #skipBtn{position:absolute;right:30px;bottom:calc(9vh + 22px);z-index:5;pointer-events:auto;
+    padding:9px 20px;font-size:11.5px;letter-spacing:2.4px;background:rgba(255,255,255,.08);
+    color:#c8dde6;border:1px solid rgba(255,255,255,.22)}
+  #skipBtn:hover{background:rgba(255,255,255,.2);color:#fff;box-shadow:none}
+  body.cinema #hud,body.cinema #crosshair,body.cinema #prompt,body.cinema #vig,
+  body.cinema #toasts,body.cinema #objective{opacity:0;transition:.4s}
+
+  #vig{position:fixed;inset:0;pointer-events:none;z-index:5;
+    background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.42) 100%)}
+
+  /* ---------- mobile: bramki pełnego ekranu / orientacji ---------- */
+  #fsGate,#rotateGate{position:fixed;inset:0;z-index:40;display:none;
+    align-items:center;justify-content:center;flex-direction:column;gap:22px;
+    background:radial-gradient(ellipse at center,rgba(8,14,22,.97),rgba(2,4,8,.99));
+    text-align:center;padding:30px}
+  #fsGate.show,#rotateGate.show{display:flex}
+  #fsGate .icon,#rotateGate .icon{font-size:52px}
+  #rotateGate .icon{animation:rot 1.8s ease-in-out infinite}
+  @keyframes rot{0%,100%{transform:rotate(0deg)}50%{transform:rotate(-90deg)}}
+  #fsGate h2,#rotateGate h2{font-size:19px;letter-spacing:2px;font-weight:500;
+    color:#e8f4fa;max-width:340px;line-height:1.5}
+  #fsBtn{padding:15px 34px;font-size:14px;letter-spacing:2px}
+
+  /* ---------- sterowanie dotykowe ---------- */
+  #touchUI{position:fixed;inset:0;z-index:12;display:none;pointer-events:none}
+  body.mobile #touchUI.show{display:block}
+  body.mobile #hint{display:none}
+  body.mobile canvas{touch-action:none}
+  #joyZone{position:absolute;left:0;bottom:0;width:46%;height:56%;pointer-events:auto;z-index:2}
+  #lookZone{position:absolute;right:0;bottom:0;width:100%;height:100%;pointer-events:auto;z-index:1}
+  #joyBase{position:fixed;width:120px;height:120px;border-radius:50%;opacity:0;
+    background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.28);
+    transition:opacity .15s;pointer-events:none;z-index:13}
+  #joyKnob{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;
+    border-radius:50%;background:rgba(95,216,238,.35);border:1.5px solid rgba(180,235,245,.7)}
+  .tbtn{position:fixed;width:66px;height:66px;border-radius:50%;pointer-events:auto;
+    background:rgba(10,16,24,.55);border:1.5px solid rgba(120,200,225,.4);color:#e8f4fa;
+    display:flex;align-items:center;justify-content:center;font-size:13px;letter-spacing:.5px;
+    z-index:14;-webkit-user-select:none;user-select:none}
+  .tbtn.on{background:rgba(95,216,238,.35);border-color:var(--acc)}
+  .tbtn.show{display:flex}
+  #btnJump{right:26px;bottom:118px}
+  #btnInteract{right:100px;bottom:34px;width:74px;height:74px;font-size:16px;font-weight:700}
+  #btnRun{right:26px;bottom:34px;font-size:11px}
+  #btnMenu{left:20px;top:20px;width:46px;height:46px;font-size:16px;z-index:15}
+  #btnBuild{left:20px;top:76px;width:46px;height:46px;font-size:18px;z-index:15}
+  #btnPlace,#btnRemove{display:none;bottom:210px;width:58px;height:58px;font-size:20px}
+  #btnPlace.show,#btnRemove.show{display:flex}
+  #btnPlace{right:100px}
+  #btnRemove{right:26px}
+  body.mobile #palette{bottom:min(280px, 34vh)}
+  /* na krótkich ekranach 120% wysokości palety bywa za małym przesunięciem, żeby ją schować —
+     na mobile chowamy jawnie stałym przesunięciem, niezależnym od wysokości palety */
+  body.mobile:not(.building) #palette{transform:translateX(-50%) translateY(120vh);opacity:0;pointer-events:none}
+  body.mobile.building #palette{transform:translateX(-50%) translateY(0);opacity:1;pointer-events:auto}
+  @media (max-height:460px){
+    body.mobile #palette{bottom:min(150px, 30vh)}
+    .tbtn{transform:scale(.82)}
+    #btnMenu{transform:scale(.82) translate(0,0)}
+    #btnBuild{top:64px}
+  }
+  body.building #btnInteract{opacity:0}
+  @media (max-width:900px){
+    #topleft{top:14px;left:66px}
+    #loc{font-size:15px;letter-spacing:1.6px}
+    #sub{font-size:10.5px}
+    #stats{top:14px;right:14px;font-size:12px;gap:9px}
+    #mpBadge{top:40px;right:14px}
+    .panel{padding:26px 20px}
+    .panel h1{font-size:34px;letter-spacing:8px}
+  }
+</style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+<div id="vig"></div>
+
+<div id="hud">
+  <div id="topleft"><div id="loc">THE SHIP</div><div id="sub"></div></div>
+  <div id="stats"></div>
+  <div id="mpBadge">⚡ offline</div>
+  <div id="hint">
+    <b>WSAD</b> ruch &nbsp; <b>SHIFT</b> bieg &nbsp; <b>SPACJA</b> skok &nbsp; <b>E</b> interakcja<br>
+    <b>B</b> budowanie &nbsp; <b>F</b> latarka &nbsp; <b>M</b> muzyka &nbsp; <b>H</b> pomoc
+  </div>
+</div>
+<div id="crosshair"></div>
+<div id="objective"></div>
+<div id="prompt"></div>
+<div id="dialog"></div>
+<div id="toasts"></div>
+<div id="palette"></div>
+
+<!-- bramki mobilne: pełny ekran, potem pozioma orientacja -->
+<div id="fsGate">
+  <div class="icon">📱</div>
+  <h2>Grasz na telefonie? Włącz pełny ekran, żeby nic nie przeszkadzało.</h2>
+  <button id="fsBtn">Pełny ekran</button>
+</div>
+<div id="rotateGate">
+  <div class="icon">📱</div>
+  <h2>Obróć telefon poziomo, żeby zagrać</h2>
+</div>
+
+<!-- sterowanie dotykowe -->
+<div id="touchUI">
+  <div id="joyZone"></div>
+  <div id="lookZone"></div>
+  <div id="joyBase"><div id="joyKnob"></div></div>
+  <button id="btnMenu" class="tbtn show">☰</button>
+  <button id="btnBuild" class="tbtn show">🔨</button>
+  <button id="btnRun" class="tbtn show">BIEG</button>
+  <button id="btnJump" class="tbtn show">↑</button>
+  <button id="btnInteract" class="tbtn show">E</button>
+  <button id="btnPlace" class="tbtn">➕</button>
+  <button id="btnRemove" class="tbtn">➖</button>
+</div>
+
+<!-- nakładka filmu / cutsceny -->
+<div id="film">
+  <div class="bar t"></div>
+  <div class="bar b"></div>
+  <div class="scan"></div>
+  <div class="flick"></div>
+  <div class="vig"></div>
+  <div id="filmTc">14.03.2026  04:11:38:00</div>
+  <div id="filmRec"><i></i>REC</div>
+  <div id="filmStamp">MATERIAŁ NIEJAWNY</div>
+  <div id="filmText"></div>
+  <button id="skipBtn">Pomiń [Esc]</button>
+</div>
+
+<!-- ekran startowy -->
+<div id="start" class="overlay show">
+  <div class="panel">
+    <h1>THE SHIP</h1>
+    <div class="tagline">spokojna podróż przez kosmos</div>
+    <p>Twój dom to statek: kuchnia, salon z wielkim oknem, oranżeria, twoja kajuta,
+      maszynownia, ładownia i mostek. Nigdzie się nie spieszysz.</p>
+    <p>Ustaw kurs na planetę, wyląduj, otwórz właz śluzy i wyjdź pozwiedzać.
+      W kajucie możesz zbudować sobie własne wnętrze.</p>
+    <div class="keys">
+      <div><kbd>W A S D</kbd> chodzenie</div>
+      <div><kbd>Myszka</kbd> rozglądanie</div>
+      <div><kbd>Shift</kbd> bieg</div>
+      <div><kbd>Spacja</kbd> skok / w górę</div>
+      <div><kbd>Ctrl</kbd> w dół (w kosmosie)</div>
+      <div><kbd>E</kbd> drzwi i przedmioty</div>
+      <div><kbd>B</kbd> tryb budowania</div>
+      <div><kbd>F</kbd> latarka</div>
+      <div><kbd>M</kbd> muzyka</div>
+      <div><kbd>Esc</kbd> menu / pauza</div>
+    </div>
+    <div class="row"><button id="startBtn">Wejdź na pokład</button></div>
+  </div>
+</div>
+
+<!-- menu / pauza -->
+<div id="menu" class="overlay">
+  <div class="panel">
+    <h2>Pauza</h2>
+    <p><b>Jak grać:</b> chodź po statku i otwieraj drzwi klawiszem <kbd>E</kbd> — otwierają się z animacją.
+      Na mostku (na końcu korytarza, na wschód) jest konsola nawigacyjna: wybierz planetę i leć.
+      Po wylądowaniu idź do śluzy, otwórz właz i wyjdź na powierzchnię.</p>
+    <p>W głębokiej przestrzeni wyjście przez właz to spacer kosmiczny w zerowej grawitacji —
+      możesz obejrzeć statek z zewnątrz. Lina asekuracyjna nie pozwoli ci odlecieć za daleko.</p>
+    <p>W kajucie (i wszędzie indziej na statku) wciśnij <kbd>B</kbd> i buduj:
+      <kbd>LPM</kbd> stawiaj, <kbd>PPM</kbd> usuwaj, <kbd>R</kbd> obracaj, <kbd>C</kbd> zmieniaj kolor,
+      <kbd>1</kbd>–<kbd>0</kbd> lub kółko myszy wybiera przedmiot. Stawiaj jedno na drugim.</p>
+    <div class="keys">
+      <div><kbd>W A S D</kbd> ruch</div>
+      <div><kbd>Shift</kbd> bieg</div>
+      <div><kbd>Spacja</kbd> skok</div>
+      <div><kbd>E</kbd> interakcja</div>
+      <div><kbd>B</kbd> budowanie</div>
+      <div><kbd>F</kbd> latarka</div>
+      <div><kbd>M</kbd> muzyka</div>
+      <div><kbd>Esc</kbd> wróć do gry</div>
+    </div>
+    <p id="mpInfo" style="margin-top:4px"></p>
+    <div class="row">
+      <button id="resumeBtn">Wracam do gry</button>
+      <button id="musicBtn" class="ghost">Muzyka: WŁ</button>
+      <button id="introBtn" class="ghost">Powtórz intro</button>
+      <button id="inviteBtn" class="ghost">Zaproś znajomych</button>
+    </div>
+  </div>
+</div>
+
+<!-- nawigacja -->
+<div id="nav" class="overlay">
+  <div class="panel">
+    <h2>Konsola nawigacyjna</h2>
+    <p>Wybierz cel podróży. Podczas lotu możesz spokojnie chodzić po statku i patrzeć przez okna.</p>
+    <div id="navBody"></div>
+    <div class="row"><button id="navClose" class="ghost">Zamknij</button></div>
+  </div>
+</div>
+
+<div id="fade"></div>
+
+<script src="js/math.js?v=2"></script>
+<script src="js/gfx.js?v=2"></script>
+<script src="js/audio.js?v=2"></script>
+<script src="js/world.js?v=2"></script>
+<script src="js/planet.js?v=2"></script>
+<script src="js/build.js?v=2"></script>
+<script src="js/intro.js?v=2"></script>
+<script src="js/story.js?v=2"></script>
+<script src="js/net.js?v=2"></script>
+<script src="js/mobile.js?v=2"></script>
+<script src="js/game.js?v=2"></script>
+</body>
+</html>
