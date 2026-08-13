@@ -77,6 +77,12 @@ wss.on('connection', (ws, req) => {
     } else if (msg.t === 'chat' && typeof msg.text === 'string') {
       const out = JSON.stringify({ t: 'chat', id, name: client.name, text: msg.text.slice(0, 140) });
       for (const [, c] of roomOf(roomId)) if (c.ws.readyState === 1) c.ws.send(out);
+    } else if (msg.t === 'transit' && (msg.kind === 'takeoff' || msg.kind === 'landing')) {
+      const out = JSON.stringify({ t: 'transit', id, kind: msg.kind, zone: msg.zone, pos: msg.pos });
+      for (const [pid, c] of roomOf(roomId)) if (pid !== id && c.ws.readyState === 1) c.ws.send(out);
+    } else if (msg.t === 'emote' && typeof msg.name === 'string') {
+      const out = JSON.stringify({ t: 'emote', id, name: msg.name.slice(0, 24) });
+      for (const [pid, c] of roomOf(roomId)) if (pid !== id && c.ws.readyState === 1) c.ws.send(out);
     }
   });
 

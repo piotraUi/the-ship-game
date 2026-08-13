@@ -644,6 +644,20 @@ class Renderer {
   clearSky(c) { this.gl.clearColor(c[0], c[1], c[2], 1); }
   clearDepth() { this.gl.clear(this.gl.DEPTH_BUFFER_BIT); }
 
+  /* rzutuje punkt świata na piksele CSS canvasu (do etykiet HTML nad graczami itp.) */
+  project(p) {
+    const vp = this._vp || (this._vp = m4());
+    m4mul(vp, this.proj, this.view);
+    const x = p[0], y = p[1], z = p[2];
+    const cx = vp[0] * x + vp[4] * y + vp[8] * z + vp[12];
+    const cy = vp[1] * x + vp[5] * y + vp[9] * z + vp[13];
+    const cw = vp[3] * x + vp[7] * y + vp[11] * z + vp[15];
+    if (cw <= 0.0001) return null;
+    const sx = (cx / cw * 0.5 + 0.5) * this.canvas.clientWidth;
+    const sy = (1 - (cy / cw * 0.5 + 0.5)) * this.canvas.clientHeight;
+    return [sx, sy, cw];
+  }
+
   setEnv(e) {
     const env = this.env;
     for (const k in e) env[k] = e[k];

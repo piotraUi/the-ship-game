@@ -155,6 +155,12 @@ class TouchInput {
     tap('btnInteract', () => { if (g.started && !g.paused) g.interact(); });
     tap('btnBuild', () => { if (g.started && !g.paused) g.toggleBuild(); });
     tap('btnMenu', () => { if (!g.started) return; g.paused ? g.resume() : g.pause(true); });
+    tap('btnEmote', () => {
+      if (!g.started || g.paused) return;
+      const order = ['wave', 'dance', 'heart'];
+      this.emoteIdx = ((this.emoteIdx || 0) + 1) % order.length;
+      g.emote(order[this.emoteIdx]);
+    });
     tap('btnPlace', () => {
       if (!g.buildMode) return;
       const t = g.builder.target(g.eye(), g.dir());

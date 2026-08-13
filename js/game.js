@@ -28,6 +28,12 @@ class Game {
     nb.box(-0.16, 0, -0.01, 0.16, 0.22, 0.01, TILE.LIGHT, col(0xfff4d0), { emis: 0.8 });
     nb.box(-0.17, -0.02, -0.025, 0.17, 0.02, 0.025, TILE.PANEL, col(0x4a5058), { uvScale: 1 });
     this.noteMesh = new Mesh(this.gl, nb);
+    const sb = new MeshBuilder();
+    sb.blob(0, 0, 0, 1, 0.5, 91, TILE.PLAIN, col(0xd8d0c4), { seg: 7, rings: 4 });
+    this.smokeMesh = new Mesh(this.gl, sb);
+
+    // start/lądowanie – prawdziwy lot statku zamiast płaskiego przyciemnienia
+    this.transit = null;
 
     // multiplayer (relay pozycji przez WebSocket, jeśli serwer je obsługuje)
     this.net = new Net(this);
@@ -181,6 +187,9 @@ class Game {
       this.toast(this.headlamp > 0 ? 'Latarka włączona' : 'Latarka wyłączona');
     }
     else if (e.code === 'KeyH') this.pause(true);
+    else if (e.code === 'KeyZ') this.emote('wave');
+    else if (e.code === 'KeyX') this.emote('dance');
+    else if (e.code === 'KeyV') this.emote('heart');
     else if (this.buildMode) {
       if (e.code === 'KeyR') { this.builder.yaw += Math.PI / 2; }
       else if (e.code === 'KeyC') {
@@ -343,18 +352,24 @@ class Game {
     else if (d.loc && d.loc.planet !== null && d.loc.planet !== undefined) this.loc = { state: 'orbit', planet: d.loc.planet };
   }
 
+  /* buduje teren/niebo danej planety tylko jeśli jeszcze nie jest gotowy dla niej */
+  ensureTerrainFor(i) {
+    const p = PLANETS[i];
+    if (this.terrain && this.terrain.p === p) return;
+    if (this.terrain) this.terrain.dispose();
+    this.terrain = new Terrain(this.gl, p);
+    if (this.skyDome) this.skyDome.dispose();
+    this.skyDome = buildSkyDome(this.gl, p);
+    const taken = this.collected[p.id] || [];
+    this.terrain.samples.forEach((s, idx) => { if (taken.indexOf(idx) >= 0) s.taken = true; });
+  }
+
   /* ======================= LOKACJA ======================= */
   applyLocation(silent) {
     const st = this.loc.state;
     if (st === 'landed') {
       const p = PLANETS[this.loc.planet];
-      if (this.terrain) this.terrain.dispose();
-      this.terrain = new Terrain(this.gl, p);
-      if (this.skyDome) this.skyDome.dispose();
-      this.skyDome = buildSkyDome(this.gl, p);
-      // przywróć zebrane próbki
-      const taken = this.collected[p.id] || [];
-      this.terrain.samples.forEach((s, i) => { if (taken.indexOf(i) >= 0) s.taken = true; });
+      this.ensureTerrainFor(this.loc.planet);
       this.visited[p.id] = true;
       this.audio.setAmbience('planet');
       // skaner wykrywa obozowisko załogi
@@ -463,8 +478,8 @@ class Game {
 
   landOn(i) {
     this.closeNav();
-    this.audio.land();
-    this.fadeTo(() => {
+    this.ensureTerrainFor(i);
+    this.beginTransit('landing', () => {
       this.loc = { state: 'landed', planet: i };
       this.applyLocation();
       this.toast('Wylądowano na ' + PLANETS[i].name + '. Śluza jest po prawej stronie korytarza.', true);
@@ -473,20 +488,70 @@ class Game {
 
   takeOff(after) {
     this.closeNav();
-    this.audio.land();
     const wasOutside = !this.ship.roomAt(this.p.pos[0], this.p.pos[2]);
     if (wasOutside) {
       this.toast('Wracaj na pokład przed startem!');
       this.audio.deny();
       return;
     }
-    this.fadeTo(() => {
+    this.beginTransit('takeoff', () => {
       const p = this.loc.planet;
       this.loc = { state: 'orbit', planet: p };
       this.applyLocation();
       this.toast('Statek na orbicie.');
       if (after) after();
     });
+  }
+
+  /* ======================= START / LĄDOWANIE — kinowy lot statku ======================= */
+  beginTransit(kind, stateCb) {
+    this.transit = { kind: kind, t: 0, dur: kind === 'takeoff' ? 5.6 : 5.0, stateCb: stateCb };
+    this.paused = true;
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.net.sendTransit(kind);
+    if (kind === 'takeoff') { this.audio.warp(); this.audio.noiseBurst(2.4, 200, 60, 0.22, 'lowpass'); }
+    else this.audio.land();
+  }
+
+  updateTransit(dt) {
+    const tr = this.transit;
+    tr.t += dt;
+    const e = clamp(tr.t / tr.dur, 0, 1);
+    this.shake = Math.max(this.shake, (tr.kind === 'takeoff' ? smoothstep(0, 0.3, e) * (1 - smoothstep(0.6, 1, e)) : smoothstep(0.7, 1, e)) * 0.11);
+    if (tr.t >= tr.dur * 0.82 && !tr.faded) { tr.faded = true; this.ui.fade.classList.add('on'); }
+    if (tr.t >= tr.dur) {
+      const cb = tr.stateCb;
+      this.transit = null;
+      this.shake = 0;
+      cb();
+      setTimeout(() => {
+        this.ui.fade.classList.remove('on');
+        this.paused = false;
+        if (this.started) this.lockPointer();
+      }, 260);
+    }
+  }
+
+  /* wysokość, o jaką w danej chwili "unosi się" cały kadłub statku podczas kinowego lotu */
+  transitLiftY() {
+    if (!this.transit) return 0;
+    const e = clamp(this.transit.t / this.transit.dur, 0, 1);
+    const p = this.transit.kind === 'takeoff' ? smoothstep(0.06, 0.92, e) : 1 - smoothstep(0.1, 0.96, e);
+    return p * p * 240;
+  }
+
+  transitCamera() {
+    const tr = this.transit;
+    if (!tr) return null;
+    const e = smoothstep(0, 1, clamp(tr.t / tr.dur, 0, 1));
+    if (tr.kind === 'takeoff') {
+      const pos = [lerp(52, 22, e), lerp(7, 58, e * e), lerp(60, 18, e)];
+      const look = [0, lerp(3, 90, e * e), 0];
+      return { pos: pos, dir: vnorm([look[0] - pos[0], look[1] - pos[1], look[2] - pos[2]]), fov: 1.02 + e * 0.28 };
+    }
+    const pos = [50, 14, 50];
+    const look = [0, lerp(160, 1.6, e * e * e), 0];
+    return { pos: pos, dir: vnorm([look[0] - pos[0], look[1] - pos[1], look[2] - pos[2]]), fov: 1.0 };
   }
 
   fadeTo(cb) {
@@ -653,6 +718,15 @@ class Game {
     this.toast(this.buildMode
       ? 'Tryb budowania: LPM stawiaj · PPM usuwaj · [R] obrót · [C] kolor · [1-0] wybór'
       : 'Tryb budowania wyłączony', this.buildMode);
+  }
+
+  /* proste emotki widoczne dla innych graczy w tej samej strefie */
+  emote(name) {
+    if (this.buildMode) return;
+    this.net.sendEmote(name);
+    this.audio.blip(name === 'heart' ? 900 : 500, 0.18, 0.06, 'triangle');
+    const label = name === 'wave' ? '👋 machasz' : name === 'dance' ? '🕺 tańczysz' : '❤️';
+    this.toast(label);
   }
 
   /* ======================= FIZYKA ======================= */
@@ -847,6 +921,7 @@ class Game {
     this.time += dt;
     if (this.film.active) { this.film.update(dt); return; }
     this.audio.update(dt);
+    if (this.transit) { this.updateTransit(dt); this.net.send(); return; }
     this.story.update(dt);
     if (this.story.cine) return;
 
@@ -909,7 +984,7 @@ class Game {
     const r = this.r, gl = this.gl;
     if (this.film.active) { this.film.render(r); return; }
 
-    const cam = this.story.cameraOverride();
+    const cam = this.transit ? this.transitCamera() : this.story.cameraOverride();
     const eye = cam ? cam.pos.slice() : this.eye();
     if (this.shake > 0) {
       eye[0] += (Math.random() - 0.5) * this.shake;
@@ -918,8 +993,12 @@ class Game {
     }
     const dir = cam ? cam.dir : this.dir();
     const landed = this.loc.state === 'landed';
+    // podczas kinowego lądowania widzimy powierzchnię planety, zanim stan formalnie się przestawi
+    const showGround = landed || (this.transit && this.transit.kind === 'landing');
     const planet = this.loc.planet !== null ? PLANETS[this.loc.planet] : null;
     const outside = !this.ship.roomAt(this.p.pos[0], this.p.pos[2]);
+    const liftY = this.transitLiftY();
+    const shipModel = liftY ? m4trs(this.mats.tmp2 || (this.mats.tmp2 = m4()), 0, liftY, 0, 0, 1) : this.mats.model;
 
     let fov = cam ? cam.fov : this.fov;
     if (this.warp) fov += Math.sin(clamp(this.warp.t / this.warp.dur, 0, 1) * Math.PI) * 0.35;
@@ -928,7 +1007,7 @@ class Game {
       fov += clamp((spd - 5) * 0.012, 0, 0.06);
     }
 
-    const bgCol = landed && !planet.airless ? planet.fogCol : [0, 0, 0];
+    const bgCol = showGround && !planet.airless ? planet.fogCol : [0, 0, 0];
     r.clearSky(bgCol);
     r.beginFrame(eye, dir, fov, 0.06, 900);
 
@@ -936,7 +1015,7 @@ class Game {
     gl.disable(gl.DEPTH_TEST);
     gl.depthMask(false);
 
-    if (landed && !planet.airless) {
+    if (showGround && !planet.airless) {
       r.setEnv({ ambient: [1, 1, 1], sunCol: [0, 0, 0], lights: [], fogDensity: 0 });
       r.useMain(true);
       r.draw(this.skyDome, this.mats.model);
@@ -960,10 +1039,10 @@ class Game {
     }
 
     // słońce
-    const sunDir = landed ? planet.sunDir : vnorm([0.55, 0.28, -0.78]);
+    const sunDir = showGround ? planet.sunDir : vnorm([0.55, 0.28, -0.78]);
     r.setEnv({ ambient: [1, 1, 1], sunCol: [0, 0, 0], lights: [], fogDensity: 0 });
     r.useMain(true);
-    const sunR = landed ? (planet.airless ? 9 : 13) : 11;
+    const sunR = showGround ? (planet.airless ? 9 : 13) : 11;
     r.draw(this.space.sun, m4trs(this.mats.tmp, sunDir[0] * SKY_R * 0.9, sunDir[1] * SKY_R * 0.9, sunDir[2] * SKY_R * 0.9, 0, sunR));
 
     // planety na niebie
@@ -973,19 +1052,29 @@ class Game {
       lights: [], fogDensity: 0
     });
     r.useMain(true);
+    const FRONT = [0.86, -0.16, 0.28];
     for (let i = 0; i < PLANETS.length; i++) {
       const p = PLANETS[i];
-      if (landed && i === this.loc.planet) continue;      // stoisz na niej
+      if (showGround && i === this.loc.planet) continue;  // stoisz na niej / właśnie na nią lądujesz
       let size = p.size * 0.55;
       let d = p.skyDir;
-      if (!landed && i === this.loc.planet) {
-        if (this.loc.state === 'orbit') size = 175;
-        d = vnorm([0.86, -0.16, 0.28]);                   // widoczna z mostka i salonu
+      // wielki widok "przed dziobem" tylko gdy naprawdę stoimy na orbicie i NIE lecimy właśnie dalej
+      if (!landed && !this.warp && this.loc.state === 'orbit' && i === this.loc.planet) {
+        size = 175;
+        d = vnorm(FRONT);
       }
-      if (this.warp && this.warp.target === i) {
+      if (this.warp) {
         const t = clamp(this.warp.t / this.warp.dur, 0, 1);
-        size = lerp(p.size * 0.55, 175, t * t);
-        d = vnorm([lerp(p.skyDir[0], 0.86, t), lerp(p.skyDir[1], -0.16, t), lerp(p.skyDir[2], 0.28, t)]);
+        if (this.warp.target === i) {
+          // cel podróży rośnie z małej kropki na niebie do pełnej orbity przed dziobem
+          size = lerp(p.size * 0.55, 175, t * t);
+          d = vnorm([lerp(p.skyDir[0], FRONT[0], t), lerp(p.skyDir[1], FRONT[1], t), lerp(p.skyDir[2], FRONT[2], t)]);
+        } else if (this.warp.from === i) {
+          // planeta, którą opuszczasz – kurczy się z widoku "przed dziobem" i odjeżdża na swoje miejsce na niebie
+          const shrink = smoothstep(0, 0.55, t);
+          size = lerp(175, p.size * 0.55, shrink);
+          d = vnorm([lerp(FRONT[0], p.skyDir[0], shrink), lerp(FRONT[1], p.skyDir[1], shrink), lerp(FRONT[2], p.skyDir[2], shrink)]);
+        }
       }
       // w scenie końcowej prologu Verdana Prime jest celem kapsuł
       if (this.story.cine && i === 0) {
@@ -1006,7 +1095,7 @@ class Game {
     if (this.terrain) for (const l of this.terrain.lights) lights.push(l);
     lights = this.story.tintLights(lights);
 
-    if (landed) {
+    if (showGround) {
       // teren
       r.setEnv({
         ambient: planet.ambient,
@@ -1049,7 +1138,7 @@ class Game {
     }
 
     // statek
-    const shipEnv = landed ? {
+    const shipEnv = showGround ? {
       ambient: [Math.max(0.36, planet.ambient[0]), Math.max(0.36, planet.ambient[1]), Math.max(0.38, planet.ambient[2])],
       sunDir: planet.sunDir, sunCol: colScale(planet.sunCol, 0.55),
       fogCol: planet.fogCol, fogDensity: planet.fogDensity * (outside ? 1 : 0.15),
@@ -1063,10 +1152,11 @@ class Game {
     shipEnv.ambient = this.story.tintAmbient(shipEnv.ambient);
     r.setEnv(shipEnv);
     r.useMain(false);
-    r.draw(this.ship.mesh, this.mats.model);
-    r.draw(this.builder.mesh, this.mats.model);
+    r.draw(this.ship.mesh, shipModel);
+    r.draw(this.builder.mesh, shipModel);
     this.story.renderExtra(r, this);
     this.net.render(r, this);
+    this.net.renderTransits(r, this);
 
     // drzwi (animowane skrzydła)
     for (const d of this.ship.doors) {
@@ -1077,20 +1167,47 @@ class Game {
       for (const s of [-1, 1]) {
         const c = s * (hw / 2 + off);
         r.draw(this.ship.doorPanel,
-          m4trs(this.mats.tmp, d.pos[0] + ax * c, 0.02, d.pos[2] + az * c, yaw, hw, d.h - 0.04, 1));
+          m4trs(this.mats.tmp, d.pos[0] + ax * c, 0.02 + liftY, d.pos[2] + az * c, yaw, hw, d.h - 0.04, 1));
       }
     }
 
     // pulsujący rdzeń reaktora + holo-stół
-    const pulse = 0.75 + Math.sin(this.time * 1.6) * 0.25;
-    r.draw(this.ship.glowBox, m4trs(this.mats.tmp, -31, 0.35, 0, this.time * 0.35, 2.6, 2.55, 2.6),
+    const transitBoost = this.transit ? 1 + smoothstep(0, 0.4, clamp(this.transit.t / this.transit.dur, 0, 1)) * 1.6 : 1;
+    const pulse = (0.75 + Math.sin(this.time * 1.6) * 0.25) * transitBoost;
+    r.draw(this.ship.glowBox, m4trs(this.mats.tmp, -31, 0.35 + liftY, 0, this.time * 0.35, 2.6, 2.55, 2.6),
       { emisMul: pulse * 0.9, alpha: 1 });
     const holoS = 1.1 + Math.sin(this.time * 0.8) * 0.05;
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     r.draw(this.space.planetMeshes[this.loc.planet === null ? 0 : this.loc.planet],
-      m4trs(this.mats.tmp, 30, 1.28, 0, this.time * 0.25, 0.22 * holoS), { alpha: 0.5, emisMul: 1 });
+      m4trs(this.mats.tmp, 30, 1.28 + liftY, 0, this.time * 0.25, 0.22 * holoS), { alpha: 0.5, emisMul: 1 });
     gl.disable(gl.BLEND);
+
+    // silniki i pył podczas startu/lądowania
+    if (this.transit) {
+      const e = clamp(this.transit.t / this.transit.dur, 0, 1);
+      const flame = this.transit.kind === 'takeoff' ? smoothstep(0.02, 0.35, e) * (1 - smoothstep(0.75, 1, e)) : smoothstep(0.75, 0.98, e);
+      if (flame > 0.02) {
+        for (const gz of [-5.5, 5.5]) {
+          r.draw(this.fireMesh, m4trs(this.mats.tmp, -46.5, 1.8 + liftY, gz, this.time * 6, 0.9 + flame * 1.4),
+            { emisMul: 1.2 + flame * 1.8 });
+        }
+      }
+      const dust = this.transit.kind === 'takeoff' ? (1 - smoothstep(0, 0.35, e)) : smoothstep(0.8, 1, e);
+      if (dust > 0.03 && showGround) {
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);
+        for (let i = 0; i < 6; i++) {
+          const a = i / 6 * Math.PI * 2 + this.time;
+          const rr = 8 + dust * 22 + i * 2;
+          r.draw(this.smokeMesh, m4trs(this.mats.tmp, Math.cos(a) * rr, 0.3 + dust * 1.5, Math.sin(a) * rr, a, 3 + dust * 9),
+            { alpha: dust * 0.5 });
+        }
+        gl.depthMask(true);
+        gl.disable(gl.BLEND);
+      }
+    }
 
     // duch budowanego elementu
     if (this.buildMode) {
@@ -1111,7 +1228,7 @@ class Game {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.depthMask(false);
-    r.draw(this.ship.glass, this.mats.model, { alpha: 0.07 });
+    r.draw(this.ship.glass, shipModel, { alpha: 0.07 });
     gl.depthMask(true);
     gl.disable(gl.BLEND);
   }

@@ -27,6 +27,9 @@ class Net {
     this.lastSend = 0;
     this.meshCache = new Map();   // color -> Mesh (współdzielone między graczami o tym kolorze)
     this.retryDelay = 1000;
+    this.transits = [];           // aktywne odloty/lądowania innych graczy
+    this.shuttleMesh = null;
+    this.emotes = new Map();      // id -> {name, t}
   }
 
   connect() {
@@ -70,6 +73,14 @@ class Net {
         for (const id of Array.from(this.players.keys())) if (!seen.has(id)) this.players.delete(id);
       } else if (msg.t === 'chat') {
         if (this.g && msg.id !== this.id) this.g.toast(msg.name + ': ' + msg.text);
+      } else if (msg.t === 'transit') {
+        this.transits.push({ kind: msg.kind, zone: msg.zone, pos: msg.pos, t0: performance.now() });
+        if (this.g && msg.zone === this.zoneKey()) {
+          this.g.toast((msg.kind === 'takeoff' ? '🚀 Czyjś statek startuje w pobliżu.' : '🚀 Czyjś statek schodzi do lądowania.'));
+          this.g.audio.noiseBurst(1.8, 260, 90, 0.10, 'lowpass');
+        }
+      } else if (msg.t === 'emote') {
+        this.emotes.set(msg.id, { name: msg.name, t: performance.now() });
       }
     };
   }
@@ -113,6 +124,17 @@ class Net {
     this.ws.send(JSON.stringify({ t: 'chat', text: text }));
   }
 
+  /* rozgłasza start/lądowanie do innych graczy w tym samym pokoju */
+  sendTransit(kind) {
+    if (!this.ws || this.ws.readyState !== 1) return;
+    this.ws.send(JSON.stringify({ t: 'transit', kind: kind, zone: this.zoneKey(), pos: this.g.p.pos.slice() }));
+  }
+
+  sendEmote(name) {
+    if (!this.ws || this.ws.readyState !== 1) return;
+    this.ws.send(JSON.stringify({ t: 'emote', name: name }));
+  }
+
   meshFor(color) {
     let m = this.meshCache.get(color);
     if (!m) {
@@ -122,19 +144,74 @@ class Net {
     return m;
   }
 
+  buildShuttle(gl) {
+    const mb = new MeshBuilder();
+    mb.cylinder(0, 0, 0, 0.5, 1.6, 10, TILE.PANEL, col(0xd8dce2), { rTop: 0.18 });
+    mb.cylinder(0, -0.35, 0, 0.42, 0.35, 10, TILE.RIDGE, col(0x5b636d), { rTop: 0.5 });
+    mb.cylinder(0, -0.6, 0, 0.22, 0.28, 8, TILE.LIGHT, col(0xffb060), { rTop: 0.05, emis: 1 });
+    return new Mesh(gl, mb);
+  }
+
+  emoteIcons() {
+    return { wave: '👋', sit: '🧘', dance: '🕺', heart: '❤️' };
+  }
+
   /* rysuje pozostałych graczy będących w tej samej "strefie" co lokalny gracz */
   render(r, game) {
-    if (!this.players.size) return;
+    if (this.players.size) {
+      const myZone = this.zoneKey();
+      const m = game.mats.tmp;
+      const dt = Math.min(0.1, game.lastDt || 0.016);
+      for (const [id, p] of this.players) {
+        if (p.zone !== myZone || !p.pos) continue;
+        if (!p.dispPos) p.dispPos = p.pos.slice();
+        for (let i = 0; i < 3; i++) p.dispPos[i] = damp(p.dispPos[i], p.pos[i], 10, dt);
+        const mesh = this.meshFor(p.color || 0x5fd8ee);
+        const emote = this.emotes.get(id);
+        const sit = emote && emote.name === 'sit' && performance.now() - emote.t < 3000;
+        const bob = sit ? -0.35 : Math.sin(game.time * 6 + id.length) * 0.03;
+        r.draw(mesh, m4trs(m, p.dispPos[0], p.dispPos[1] + bob, p.dispPos[2], p.yaw + Math.PI, 1));
+      }
+    }
+    this.renderEmoteLabels(game);
+  }
+
+  renderEmoteLabels(game) {
+    const el = document.getElementById('emoteLayer');
+    if (!el) return;
+    const myZone = this.zoneKey();
+    const now = performance.now();
+    let html = '';
+    for (const [id, e] of this.emotes) {
+      if (now - e.t > 1800) continue;
+      const p = this.players.get(id);
+      if (!p || p.zone !== myZone || !p.dispPos) continue;
+      const wp = [p.dispPos[0], p.dispPos[1] + 2.35, p.dispPos[2]];
+      const sp = game.r.project(wp);
+      if (!sp) continue;
+      const icon = this.emoteIcons()[e.name] || '❔';
+      const fade = 1 - clamp((now - e.t) / 1800, 0, 1);
+      html += '<div class="elabel" style="left:' + sp[0] + 'px;top:' + sp[1] + 'px;opacity:' + fade + '">' + icon + '</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  /* rysuje symboliczny wahadłowiec innych graczy odlatujących/lądujących w tej samej strefie */
+  renderTransits(r, game) {
+    if (!this.transits.length) return;
+    if (!this.shuttleMesh) this.shuttleMesh = this.buildShuttle(game.gl);
     const myZone = this.zoneKey();
     const m = game.mats.tmp;
-    const dt = Math.min(0.1, game.lastDt || 0.016);
-    for (const [id, p] of this.players) {
-      if (p.zone !== myZone || !p.pos) continue;
-      if (!p.dispPos) p.dispPos = p.pos.slice();
-      for (let i = 0; i < 3; i++) p.dispPos[i] = damp(p.dispPos[i], p.pos[i], 10, dt);
-      const mesh = this.meshFor(p.color || 0x5fd8ee);
-      const bob = Math.sin(game.time * 6 + id.length) * 0.03;
-      r.draw(mesh, m4trs(m, p.dispPos[0], p.dispPos[1] + bob, p.dispPos[2], p.yaw + Math.PI, 1));
+    const now = performance.now();
+    for (let i = this.transits.length - 1; i >= 0; i--) {
+      const tr = this.transits[i];
+      const age = (now - tr.t0) / 1000;
+      if (age > 6.5) { this.transits.splice(i, 1); continue; }
+      if (tr.zone !== myZone) continue;
+      const e = clamp(age / 5.5, 0, 1);
+      const rise = tr.kind === 'takeoff' ? e * e * 90 : (1 - e) * 90;
+      const y = tr.pos[1] + rise + (tr.kind === 'landing' ? 40 : 0);
+      r.draw(this.shuttleMesh, m4trs(m, tr.pos[0], y, tr.pos[2], age * 1.4, 1.6), { emisMul: 1.3 });
     }
   }
 }

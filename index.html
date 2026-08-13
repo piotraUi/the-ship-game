@@ -34,6 +34,12 @@
     color:#7d9aa8;text-shadow:0 2px 8px #000;transition:.2s}
   #mpBadge.on{color:#9fe8c8}
 
+  #emoteLayer{position:fixed;inset:0;pointer-events:none;z-index:7}
+  .elabel{position:absolute;transform:translate(-50%,-100%);font-size:26px;
+    text-shadow:0 2px 10px rgba(0,0,0,.7);transition:opacity .2s;
+    animation:elabelUp 1.8s ease-out}
+  @keyframes elabelUp{from{transform:translate(-50%,-80%)}to{transform:translate(-50%,-130%)}}
+
   #crosshair{position:fixed;left:50%;top:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;
     border-radius:50%;border:1.5px solid rgba(230,250,255,.75);
     box-shadow:0 0 8px rgba(0,0,0,.8);pointer-events:none;transition:.18s}
@@ -242,6 +248,7 @@
   #btnPlace.show,#btnRemove.show{display:flex}
   #btnPlace{right:100px}
   #btnRemove{right:26px}
+  #btnEmote{left:20px;top:132px;width:46px;height:46px;font-size:16px;z-index:15}
   body.mobile #palette{bottom:min(280px, 34vh)}
   /* na krótkich ekranach 120% wysokości palety bywa za małym przesunięciem, żeby ją schować —
      na mobile chowamy jawnie stałym przesunięciem, niezależnym od wysokości palety */
@@ -275,7 +282,8 @@
   <div id="mpBadge">⚡ offline</div>
   <div id="hint">
     <b>WSAD</b> ruch &nbsp; <b>SHIFT</b> bieg &nbsp; <b>SPACJA</b> skok &nbsp; <b>E</b> interakcja<br>
-    <b>B</b> budowanie &nbsp; <b>F</b> latarka &nbsp; <b>M</b> muzyka &nbsp; <b>H</b> pomoc
+    <b>B</b> budowanie &nbsp; <b>F</b> latarka &nbsp; <b>M</b> muzyka &nbsp; <b>H</b> pomoc &nbsp;
+    <b>Z</b> machnij &nbsp; <b>X</b> zatańcz &nbsp; <b>V</b> serduszko
   </div>
 </div>
 <div id="crosshair"></div>
@@ -284,6 +292,7 @@
 <div id="dialog"></div>
 <div id="toasts"></div>
 <div id="palette"></div>
+<div id="emoteLayer"></div>
 
 <!-- bramki mobilne: pełny ekran, potem pozioma orientacja -->
 <div id="fsGate">
@@ -308,6 +317,7 @@
   <button id="btnInteract" class="tbtn show">E</button>
   <button id="btnPlace" class="tbtn">➕</button>
   <button id="btnRemove" class="tbtn">➖</button>
+  <button id="btnEmote" class="tbtn show">👋</button>
 </div>
 
 <!-- nakładka filmu / cutsceny -->
@@ -393,16 +403,16 @@
 
 <div id="fade"></div>
 
-<script src="js/math.js?v=2"></script>
-<script src="js/gfx.js?v=2"></script>
-<script src="js/audio.js?v=2"></script>
-<script src="js/world.js?v=2"></script>
-<script src="js/planet.js?v=2"></script>
-<script src="js/build.js?v=2"></script>
-<script src="js/intro.js?v=2"></script>
-<script src="js/story.js?v=2"></script>
-<script src="js/net.js?v=2"></script>
-<script src="js/mobile.js?v=2"></script>
-<script src="js/game.js?v=2"></script>
+<script src="js/math.js?v=5"></script>
+<script src="js/gfx.js?v=5"></script>
+<script src="js/audio.js?v=5"></script>
+<script src="js/world.js?v=5"></script>
+<script src="js/planet.js?v=5"></script>
+<script src="js/build.js?v=5"></script>
+<script src="js/intro.js?v=5"></script>
+<script src="js/story.js?v=5"></script>
+<script src="js/net.js?v=5"></script>
+<script src="js/mobile.js?v=5"></script>
+<script src="js/game.js?v=5"></script>
 </body>
 </html>
