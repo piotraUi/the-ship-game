@@ -1,5 +1,6 @@
 'use strict';
-/* ---------- The Ship :: matematyka (macierze, wektory, szum) ---------- */
+/* ---------- Silnik :: matematyka (macierze, wektory, szum) ----------
+   Bez zależności od gry — można skopiować ten plik do innego projektu. */
 
 function m4() { return new Float32Array(16); }
 

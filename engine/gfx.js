@@ -1,5 +1,7 @@
 'use strict';
-/* ---------- The Ship :: silnik graficzny (WebGL, bez bibliotek) ---------- */
+/* ---------- Silnik :: grafika WebGL (bez bibliotek, bez zależności od gry) ----------
+   MeshBuilder / Mesh / Renderer + domyślny atlas tekstur — kopiuj cały ten plik
+   do innego projektu razem z math.js. Gra dostarcza własną geometrię i wywołania. */
 
 const TILE = {
   HULL: 0, GRATE: 1, PANEL: 2, WOOD: 3,

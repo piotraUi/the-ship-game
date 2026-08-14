@@ -4,6 +4,7 @@
 function roomFromUrl() {
   const p = new URLSearchParams(location.search);
   let r = p.get('room');
+  window.__joinedViaLink = !!r;
   if (!r) {
     r = Math.random().toString(36).slice(2, 8);
     const url = new URL(location.href);
@@ -30,9 +31,20 @@ class Net {
     this.transits = [];           // aktywne odloty/lądowania innych graczy
     this.shuttleMesh = null;
     this.emotes = new Map();      // id -> {name, t}
+    this.hostId = null;
+    this.started = false;
+    this.skipCount = 0;
+    this.skipTotal = 0;
+    this.onLobby = null;          // wywoływane przy każdej zmianie rosteru/hosta/started
+    this.onGameStarted = null;    // wywoływane, gdy host uruchomi grę (u wszystkich)
+    this.onSkipProgress = null;   // wywoływane przy zmianie liczby głosów na pominięcie
+    this.onSkipNow = null;        // wywoływane, gdy WSZYSCY zagłosują za pominięciem
+    this.manualClose = false;     // ustawiane przy świadomej zmianie pokoju, żeby nie próbować reconnectu do starego
   }
 
   connect() {
+    if (this.ws) { this.manualClose = true; try { this.ws.close(); } catch (e) { } }
+    this.manualClose = false;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     let url;
     if (location.protocol === 'file:') { this.disabled = true; return; }
@@ -42,9 +54,11 @@ class Net {
 
     ws.onopen = () => { this.connected = true; this.retryDelay = 1000; this.updateBadge(); };
     ws.onclose = () => {
+      if (ws !== this.ws) return;                 // to zamknięcie dotyczy starego, porzuconego socketu
       this.connected = false;
       this.players.clear();
       this.updateBadge();
+      if (this.manualClose) return;
       setTimeout(() => this.connect(), this.retryDelay);
       this.retryDelay = Math.min(15000, this.retryDelay * 1.6);
     };
@@ -57,7 +71,20 @@ class Net {
         this.updateBadge();
       } else if (msg.t === 'roster') {
         this.roster = msg.players;
+        this.hostId = msg.hostId;
+        this.started = !!msg.started;
+        this.skipTotal = msg.players.length;
         this.updateBadge();
+        if (this.onLobby) this.onLobby();
+      } else if (msg.t === 'game_started') {
+        this.started = true;
+        if (this.onGameStarted) this.onGameStarted();
+      } else if (msg.t === 'skip_progress') {
+        this.skipCount = msg.count; this.skipTotal = msg.total;
+        if (this.onSkipProgress) this.onSkipProgress(msg.count, msg.total);
+      } else if (msg.t === 'skip_now') {
+        this.skipCount = 0;
+        if (this.onSkipNow) this.onSkipNow();
       } else if (msg.t === 'players') {
         const seen = new Set();
         for (const p of msg.players) {
@@ -133,6 +160,39 @@ class Net {
   sendEmote(name) {
     if (!this.ws || this.ws.readyState !== 1) return;
     this.ws.send(JSON.stringify({ t: 'emote', name: name }));
+  }
+
+  isHost() { return this.hostId !== null && this.hostId === this.id; }
+
+  /* host uruchamia grę dla wszystkich w lobby */
+  requestStart() {
+    if (!this.ws || this.ws.readyState !== 1) return;
+    this.ws.send(JSON.stringify({ t: 'start_game' }));
+  }
+
+  voteSkip() {
+    if (!this.ws || this.ws.readyState !== 1) return;
+    this.ws.send(JSON.stringify({ t: 'skip_vote' }));
+  }
+  unvoteSkip() {
+    if (!this.ws || this.ws.readyState !== 1) return;
+    this.ws.send(JSON.stringify({ t: 'skip_unvote' }));
+  }
+
+  /* zmienia pokój (dołączenie po kodzie / stworzenie nowego) bez przeładowania strony */
+  setRoom(code) {
+    const clean = (code || '').trim().slice(0, 40).replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!clean) return false;
+    this.room = clean;
+    this.players.clear();
+    this.transits = [];
+    this.emotes.clear();
+    this.hostId = null; this.started = false; this.roster = [];
+    const url = new URL(location.href);
+    url.searchParams.set('room', clean);
+    history.replaceState(null, '', url.toString());
+    this.connect();
+    return true;
   }
 
   meshFor(color) {

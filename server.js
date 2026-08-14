@@ -38,6 +38,8 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 /** rooms: Map<roomId, Map<clientId, {ws, state}>> */
 const rooms = new Map();
+/** roomMeta: Map<roomId, {host: id|null, started: bool, skipVotes: Set<id>}> */
+const roomMeta = new Map();
 let nextId = 1;
 
 const NAMES = ['Nova', 'Orion', 'Vega', 'Lyra', 'Atlas', 'Zephyr', 'Astra', 'Kepler', 'Rigel', 'Sol'];
@@ -47,13 +49,30 @@ function roomOf(id) {
   if (!rooms.has(id)) rooms.set(id, new Map());
   return rooms.get(id);
 }
+function metaOf(id) {
+  if (!roomMeta.has(id)) roomMeta.set(id, { host: null, started: false, skipVotes: new Set() });
+  return roomMeta.get(id);
+}
 
-function broadcastRoster(roomId) {
-  const room = roomOf(roomId);
+function broadcastLobby(roomId) {
+  const room = roomOf(roomId), meta = metaOf(roomId);
   const list = [];
   for (const [id, c] of room) list.push({ id, name: c.name, color: c.color });
-  const msg = JSON.stringify({ t: 'roster', players: list });
+  const msg = JSON.stringify({ t: 'roster', players: list, hostId: meta.host, started: meta.started });
   for (const [, c] of room) if (c.ws.readyState === 1) c.ws.send(msg);
+}
+
+function broadcastSkipProgress(roomId) {
+  const room = roomOf(roomId), meta = metaOf(roomId);
+  const total = room.size;
+  const count = meta.skipVotes.size;
+  const msg = JSON.stringify({ t: 'skip_progress', count, total });
+  for (const [, c] of room) if (c.ws.readyState === 1) c.ws.send(msg);
+  if (total > 0 && count >= total) {
+    meta.skipVotes.clear();
+    const now = JSON.stringify({ t: 'skip_now' });
+    for (const [, c] of room) if (c.ws.readyState === 1) c.ws.send(now);
+  }
 }
 
 wss.on('connection', (ws, req) => {
@@ -64,9 +83,11 @@ wss.on('connection', (ws, req) => {
   const color = COLORS[Math.floor(Math.random() * COLORS.length)];
   const client = { ws, name, color, state: null, last: Date.now() };
   roomOf(roomId).set(id, client);
+  const meta = metaOf(roomId);
+  if (!meta.host || !roomOf(roomId).has(meta.host)) meta.host = id;
 
   ws.send(JSON.stringify({ t: 'hello', id, name, color, room: roomId }));
-  broadcastRoster(roomId);
+  broadcastLobby(roomId);
 
   ws.on('message', (raw) => {
     let msg;
@@ -83,12 +104,34 @@ wss.on('connection', (ws, req) => {
     } else if (msg.t === 'emote' && typeof msg.name === 'string') {
       const out = JSON.stringify({ t: 'emote', id, name: msg.name.slice(0, 24) });
       for (const [pid, c] of roomOf(roomId)) if (pid !== id && c.ws.readyState === 1) c.ws.send(out);
+    } else if (msg.t === 'start_game') {
+      const m = metaOf(roomId);
+      if (m.host !== id) return;                 // tylko host może rozpocząć
+      m.started = true;
+      m.skipVotes.clear();
+      const out = JSON.stringify({ t: 'game_started' });
+      for (const [, c] of roomOf(roomId)) if (c.ws.readyState === 1) c.ws.send(out);
+      broadcastLobby(roomId);
+    } else if (msg.t === 'skip_vote') {
+      metaOf(roomId).skipVotes.add(id);
+      broadcastSkipProgress(roomId);
+    } else if (msg.t === 'skip_unvote') {
+      metaOf(roomId).skipVotes.delete(id);
+      broadcastSkipProgress(roomId);
     }
   });
 
   ws.on('close', () => {
     roomOf(roomId).delete(id);
-    broadcastRoster(roomId);
+    const m = metaOf(roomId);
+    m.skipVotes.delete(id);
+    if (m.host === id) {
+      const next = roomOf(roomId).keys().next();
+      m.host = next.done ? null : next.value;
+    }
+    if (roomOf(roomId).size === 0) { m.started = false; m.skipVotes.clear(); }
+    broadcastLobby(roomId);
+    broadcastSkipProgress(roomId);
   });
   ws.on('error', () => { });
 });
@@ -96,7 +139,7 @@ wss.on('connection', (ws, req) => {
 /* pętla rozgłaszania pozycji graczy w każdym pokoju, kilkanaście razy na sekundę */
 setInterval(() => {
   for (const [roomId, room] of rooms) {
-    if (room.size === 0) { rooms.delete(roomId); continue; }
+    if (room.size === 0) { rooms.delete(roomId); roomMeta.delete(roomId); continue; }
     const players = [];
     for (const [id, c] of room) {
       if (c.state) players.push(Object.assign({ id, name: c.name, color: c.color }, c.state));

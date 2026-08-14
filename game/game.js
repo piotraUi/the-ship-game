@@ -90,10 +90,98 @@ class Game {
 
     this.buildPalette();
     this.bindInput();
+    this.bindLobby();
     this.touch = new TouchInput(this);
     this.load();
     this.applyLocation(true);
     this.updateHud();
+  }
+
+  /* ======================= LOBBY ======================= */
+  bindLobby() {
+    const lobby = document.getElementById('lobby');
+    const choice = document.getElementById('lobbyChoice');
+    const waiting = document.getElementById('lobbyWaiting');
+    const joinBox = document.getElementById('lobbyJoinBox');
+    const codeInput = document.getElementById('lobbyCodeInput');
+    const codeEl = document.getElementById('lobbyCode');
+    const playersEl = document.getElementById('lobbyPlayers');
+    const startBtn = document.getElementById('lobbyStartBtn');
+    const waitMsg = document.getElementById('lobbyWaitMsg');
+
+    const showWaiting = () => {
+      choice.style.display = 'none';
+      waiting.style.display = '';
+      codeEl.textContent = this.net.room.toUpperCase();
+      renderPlayers();
+    };
+
+    const renderPlayers = () => {
+      const roster = this.net.roster.length ? this.net.roster :
+        (this.net.id ? [{ id: this.net.id, name: this.net.name || 'Ty', color: this.net.color || 0x5fd8ee }] : []);
+      playersEl.innerHTML = roster.map((p) => {
+        const c = 'rgb(' + ((p.color >> 16) & 255) + ',' + ((p.color >> 8) & 255) + ',' + (p.color & 255) + ')';
+        const isHost = p.id === this.net.hostId;
+        const isMe = p.id === this.net.id;
+        return '<div class="plrow"><span class="dot" style="background:' + c + '"></span><span class="nm">' +
+          (p.name || '?') + (isMe ? ' (Ty)' : '') + '</span>' + (isHost ? '<span class="host">HOST</span>' : '') + '</div>';
+      }).join('') || '<div class="plrow"><span class="nm">Łączenie…</span></div>';
+      const iAmHost = this.net.isHost();
+      startBtn.style.display = iAmHost ? '' : 'none';
+      waitMsg.style.display = iAmHost ? 'none' : '';
+    };
+
+    document.getElementById('lobbyCreateBtn').addEventListener('click', () => { this.audio.ui(); showWaiting(); });
+    document.getElementById('lobbyJoinBtn').addEventListener('click', () => {
+      joinBox.style.display = joinBox.style.display === 'none' ? '' : 'none';
+      codeInput.focus();
+    });
+    document.getElementById('lobbyJoinConfirmBtn').addEventListener('click', () => {
+      const code = codeInput.value;
+      if (!code.trim()) return;
+      if (this.net.setRoom(code)) { showWaiting(); this.toast('Dołączanie do lobby „' + code.trim().toUpperCase() + '"…'); }
+    });
+    codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('lobbyJoinConfirmBtn').click(); });
+    document.getElementById('lobbySoloBtn').addEventListener('click', () => {
+      lobby.classList.remove('show');
+      this.ui.start.classList.add('show');
+    });
+    document.getElementById('lobbyBackBtn').addEventListener('click', () => {
+      waiting.style.display = 'none';
+      choice.style.display = '';
+    });
+    document.getElementById('lobbyCopyBtn').addEventListener('click', () => {
+      if (navigator.clipboard) navigator.clipboard.writeText(this.net.room.toUpperCase()).then(() => this.toast('Kod skopiowany'));
+    });
+    document.getElementById('lobbyCopyLinkBtn').addEventListener('click', () => {
+      if (navigator.clipboard) navigator.clipboard.writeText(location.href).then(() => this.toast('Link skopiowany'));
+    });
+    startBtn.addEventListener('click', () => { this.audio.ui(); this.net.requestStart(); });
+
+    this.net.onLobby = () => {
+      if (waiting.style.display !== 'none') renderPlayers();
+      if (this.net.started && !this.started) this.enterGameFromLobby();
+    };
+    this.net.onGameStarted = () => this.enterGameFromLobby();
+
+    this.net.onSkipProgress = (count, total) => {
+      const b = document.getElementById('skipBtn');
+      if (!b) return;
+      if (this.skipVoted) b.textContent = 'Czekam na innych… (' + count + '/' + total + ')';
+      else if (total > 1) b.textContent = 'Pomiń [Esc] (' + count + '/' + total + ')';
+    };
+    this.net.onSkipNow = () => {
+      this.skipVoted = false;
+      if (this.film.active) this.film.finish();
+      else if (this.story.cine) this.story.endCine();
+    };
+
+    if (window.__joinedViaLink) showWaiting();
+  }
+
+  enterGameFromLobby() {
+    document.getElementById('lobby').classList.remove('show');
+    this.begin();
   }
 
   /* ======================= WEJŚCIE ======================= */
@@ -231,8 +319,18 @@ class Game {
   }
 
   skipFilm() {
-    if (this.film.active) { this.film.finish(); return; }
-    if (this.story.cine) { this.story.endCine(); }
+    if (!this.film.active && !this.story.cine) return;
+    if (this.skipVoted) return;
+    if (!this.net.connected || this.net.roster.length <= 1) {
+      if (this.film.active) this.film.finish();
+      else if (this.story.cine) this.story.endCine();
+      return;
+    }
+    this.skipVoted = true;
+    this.net.voteSkip();
+    const b = document.getElementById('skipBtn');
+    b.classList.add('voted');
+    b.textContent = 'Czekam na innych… (' + this.net.skipCount + '/' + this.net.skipTotal + ')';
   }
 
   replayIntro() {
@@ -919,6 +1017,14 @@ class Game {
   /* ======================= PĘTLA ======================= */
   update(dt) {
     this.time += dt;
+    const inCine = this.film.active || !!this.story.cine;
+    if (inCine && !this._wasCine) {
+      this.skipVoted = false;
+      const b = document.getElementById('skipBtn');
+      if (b) { b.classList.remove('voted'); b.textContent = 'Pomiń [Esc]'; }
+      if (this.net.connected) this.net.unvoteSkip();
+    }
+    this._wasCine = inCine;
     if (this.film.active) { this.film.update(dt); return; }
     this.audio.update(dt);
     if (this.transit) { this.updateTransit(dt); this.net.send(); return; }

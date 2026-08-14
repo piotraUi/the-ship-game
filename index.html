@@ -202,6 +202,14 @@
     padding:9px 20px;font-size:11.5px;letter-spacing:2.4px;background:rgba(255,255,255,.08);
     color:#c8dde6;border:1px solid rgba(255,255,255,.22)}
   #skipBtn:hover{background:rgba(255,255,255,.2);color:#fff;box-shadow:none}
+  #skipBtn.voted{background:rgba(95,216,238,.22);color:#dff4fb;border-color:var(--acc)}
+
+  .plrow{display:flex;align-items:center;gap:11px;padding:9px 14px;background:rgba(255,255,255,.04);
+    border-radius:9px;font-size:13.5px}
+  .plrow .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+  .plrow .nm{flex:1;color:#dfeef5}
+  .plrow .host{font-size:10px;letter-spacing:1.5px;color:var(--acc2);border:1px solid rgba(255,183,101,.4);
+    padding:2px 7px;border-radius:5px}
   body.cinema #hud,body.cinema #crosshair,body.cinema #prompt,body.cinema #vig,
   body.cinema #toasts,body.cinema #objective{opacity:0;transition:.4s}
 
@@ -334,8 +342,52 @@
   <button id="skipBtn">Pomiń [Esc]</button>
 </div>
 
+<!-- lobby: stwórz / dołącz / graj solo -->
+<div id="lobby" class="overlay show">
+  <div class="panel">
+    <h1>THE SHIP</h1>
+    <div class="tagline">spokojna podróż przez kosmos</div>
+
+    <div id="lobbyChoice">
+      <p style="text-align:center">Zagraj sam albo stwórz lobby i zaproś znajomych kodem.</p>
+      <div class="row" style="margin-top:22px">
+        <button id="lobbyCreateBtn">Stwórz lobby</button>
+        <button id="lobbyJoinBtn" class="ghost">Dołącz po kodzie</button>
+        <button id="lobbySoloBtn" class="ghost">Graj solo</button>
+      </div>
+      <div id="lobbyJoinBox" style="display:none;margin-top:18px;text-align:center">
+        <input id="lobbyCodeInput" maxlength="12" placeholder="KOD LOBBY"
+          style="font-family:inherit;font-size:15px;letter-spacing:3px;text-transform:uppercase;
+          text-align:center;padding:11px 16px;width:210px;background:rgba(255,255,255,.06);
+          border:1px solid var(--line);border-radius:8px;color:#e8f4fa;outline:none">
+        <div class="row" style="margin-top:14px">
+          <button id="lobbyJoinConfirmBtn">Dołącz</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="lobbyWaiting" style="display:none">
+      <p style="text-align:center">Kod lobby — udostępnij go znajomym:</p>
+      <div style="text-align:center;margin:14px 0 20px">
+        <span id="lobbyCode" style="font-size:30px;letter-spacing:8px;font-weight:600;color:var(--acc)"></span>
+      </div>
+      <div class="row">
+        <button id="lobbyCopyBtn" class="ghost">Kopiuj kod</button>
+        <button id="lobbyCopyLinkBtn" class="ghost">Kopiuj link</button>
+      </div>
+      <div id="lobbyPlayers" style="margin:22px 0;display:flex;flex-direction:column;gap:8px"></div>
+      <div class="row">
+        <button id="lobbyStartBtn" style="display:none">Rozpocznij grę</button>
+        <div id="lobbyWaitMsg" style="display:none;color:#8fb4c4;letter-spacing:1px;font-size:13px;
+          padding:13px 0">Czekasz, aż host rozpocznie grę…</div>
+        <button id="lobbyBackBtn" class="ghost">Wróć</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ekran startowy -->
-<div id="start" class="overlay show">
+<div id="start" class="overlay">
   <div class="panel">
     <h1>THE SHIP</h1>
     <div class="tagline">spokojna podróż przez kosmos</div>
@@ -403,16 +455,18 @@
 
 <div id="fade"></div>
 
-<script src="js/math.js?v=5"></script>
-<script src="js/gfx.js?v=5"></script>
-<script src="js/audio.js?v=5"></script>
-<script src="js/world.js?v=5"></script>
-<script src="js/planet.js?v=5"></script>
-<script src="js/build.js?v=5"></script>
-<script src="js/intro.js?v=5"></script>
-<script src="js/story.js?v=5"></script>
-<script src="js/net.js?v=5"></script>
-<script src="js/mobile.js?v=5"></script>
-<script src="js/game.js?v=5"></script>
+<!-- silnik: generyczny, bez zależności od gry — nadaje się do skopiowania w inny projekt -->
+<script src="engine/math.js?v=7"></script>
+<script src="engine/gfx.js?v=7"></script>
+<script src="engine/audio.js?v=7"></script>
+<script src="engine/input.js?v=7"></script>
+<!-- gra: The Ship, zbudowana na silniku powyżej -->
+<script src="game/world.js?v=7"></script>
+<script src="game/planet.js?v=7"></script>
+<script src="game/build.js?v=7"></script>
+<script src="game/intro.js?v=7"></script>
+<script src="game/story.js?v=7"></script>
+<script src="game/net.js?v=7"></script>
+<script src="game/game.js?v=7"></script>
 </body>
 </html>

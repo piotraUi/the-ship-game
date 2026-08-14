@@ -1,5 +1,5 @@
 'use strict';
-/* ---------- The Ship :: dźwięk (wszystko generowane proceduralnie) ---------- */
+/* ---------- Silnik :: dźwięk proceduralny (bez plików audio, bez zależności od gry) ---------- */
 
 class Audio {
   constructor() {

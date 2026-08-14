@@ -1,5 +1,17 @@
 'use strict';
-/* ---------- The Ship :: sterowanie dotykowe, pełny ekran, orientacja ---------- */
+/* ---------- Silnik :: sterowanie dotykowe, pełny ekran, orientacja ----------
+   Generyczne — działa z dowolną grą, o ile obiekt "host" (przekazany do TouchInput)
+   udostępnia:
+     host.keys              – obiekt bool per KeyboardEvent.code (np. {'KeyW':true})
+     host.p.{yaw,pitch}      – kierunek patrzenia gracza (radiany)
+     host.ui.start           – element DOM ekranu startowego (chowany na mobile)
+     host.buildMode          – bool, czy aktywny jest tryb budowania (opcjonalnie)
+     host.builder.{target,place,remove,ghosts,sel} – opcjonalny system budowania
+     host.audio.{place,remove,deny}                – opcjonalne dźwięki
+     host.r                  – Renderer silnika (do resize() po zmianie orientacji)
+     host.interact()/toggleBuild()/pause()/resume()/emote()/save()/dir()/eye() – akcje gry
+   Jeśli gra nie ma budowania/emotek, po prostu nie dodawaj tych przycisków w HTML —
+   TouchInput sam sprawdza istnienie elementów przed podpięciem zdarzeń. */
 
 function isTouchDevice() {
   return ('ontouchstart' in window) || navigator.maxTouchPoints > 0 ||
