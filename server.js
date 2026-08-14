@@ -50,7 +50,7 @@ function roomOf(id) {
   return rooms.get(id);
 }
 function metaOf(id) {
-  if (!roomMeta.has(id)) roomMeta.set(id, { host: null, started: false, skipVotes: new Set() });
+  if (!roomMeta.has(id)) roomMeta.set(id, { host: null, started: false, skipVotes: new Set(), doors: {}, build: {} });
   return roomMeta.get(id);
 }
 
@@ -87,6 +87,7 @@ wss.on('connection', (ws, req) => {
   if (!meta.host || !roomOf(roomId).has(meta.host)) meta.host = id;
 
   ws.send(JSON.stringify({ t: 'hello', id, name, color, room: roomId }));
+  ws.send(JSON.stringify({ t: 'world_state', doors: meta.doors, build: meta.build }));
   broadcastLobby(roomId);
 
   ws.on('message', (raw) => {
@@ -104,6 +105,30 @@ wss.on('connection', (ws, req) => {
     } else if (msg.t === 'emote' && typeof msg.name === 'string') {
       const out = JSON.stringify({ t: 'emote', id, name: msg.name.slice(0, 24) });
       for (const [pid, c] of roomOf(roomId)) if (pid !== id && c.ws.readyState === 1) c.ws.send(out);
+    } else if (msg.t === 'door' && Number.isInteger(msg.idx) && (msg.target === 0 || msg.target === 1)) {
+      const m = metaOf(roomId);
+      if (msg.target) m.doors[msg.idx] = 1; else delete m.doors[msg.idx];
+      const out = JSON.stringify({ t: 'door', idx: msg.idx, target: msg.target });
+      for (const [pid, c] of roomOf(roomId)) if (pid !== id && c.ws.readyState === 1) c.ws.send(out);
+    } else if (msg.t === 'build_place' && typeof msg.key === 'string' && Array.isArray(msg.item)) {
+      const m = metaOf(roomId);
+      const key = msg.key.slice(0, 20);
+      const item = [msg.item[0] | 0, Number(msg.item[1]) || 0, msg.item[2] | 0];
+      if (!m.build[key]) m.build[key] = [];
+      if (m.build[key].length < 6) {
+        m.build[key].push(item);
+        const out = JSON.stringify({ t: 'build_place', key, item });
+        for (const [pid, c] of roomOf(roomId)) if (pid !== id && c.ws.readyState === 1) c.ws.send(out);
+      }
+    } else if (msg.t === 'build_remove' && typeof msg.key === 'string') {
+      const m = metaOf(roomId);
+      const key = msg.key.slice(0, 20);
+      if (m.build[key] && m.build[key].length) {
+        m.build[key].pop();
+        if (!m.build[key].length) delete m.build[key];
+        const out = JSON.stringify({ t: 'build_remove', key });
+        for (const [pid, c] of roomOf(roomId)) if (pid !== id && c.ws.readyState === 1) c.ws.send(out);
+      }
     } else if (msg.t === 'start_game') {
       const m = metaOf(roomId);
       if (m.host !== id) return;                 // tylko host może rozpocząć
@@ -129,7 +154,7 @@ wss.on('connection', (ws, req) => {
       const next = roomOf(roomId).keys().next();
       m.host = next.done ? null : next.value;
     }
-    if (roomOf(roomId).size === 0) { m.started = false; m.skipVotes.clear(); }
+    if (roomOf(roomId).size === 0) { m.started = false; m.skipVotes.clear(); m.doors = {}; m.build = {}; }
     broadcastLobby(roomId);
     broadcastSkipProgress(roomId);
   });

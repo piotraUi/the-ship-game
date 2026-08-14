@@ -10,6 +10,7 @@
      host.audio.{place,remove,deny}                – opcjonalne dźwięki
      host.r                  – Renderer silnika (do resize() po zmianie orientacji)
      host.interact()/toggleBuild()/pause()/resume()/emote()/save()/dir()/eye() – akcje gry
+     host.onBuildPlaced(t)/onBuildRemoved(t)        – opcjonalne haki (np. do sieci) po budowaniu
    Jeśli gra nie ma budowania/emotek, po prostu nie dodawaj tych przycisków w HTML —
    TouchInput sam sprawdza istnienie elementów przed podpięciem zdarzeń. */
 
@@ -176,12 +177,14 @@ class TouchInput {
     tap('btnPlace', () => {
       if (!g.buildMode) return;
       const t = g.builder.target(g.eye(), g.dir());
-      if (g.builder.place(t)) { g.audio.place(); g.save(); } else g.audio.deny();
+      if (t && g.builder.place(t)) { g.audio.place(); if (g.onBuildPlaced) g.onBuildPlaced(t); }
+      else g.audio.deny();
     });
     tap('btnRemove', () => {
       if (!g.buildMode) return;
       const t = g.builder.target(g.eye(), g.dir());
-      if (g.builder.remove(t)) { g.audio.remove(); g.save(); } else g.audio.deny();
+      if (t && g.builder.remove(t)) { g.audio.remove(); if (g.onBuildRemoved) g.onBuildRemoved(t); }
+      else g.audio.deny();
     });
   }
 

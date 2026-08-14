@@ -263,8 +263,50 @@ class Story {
       this.later(5.5, () => this.g.toast('Tobi: Biegnij! Nie czekaj na nas!'));
       this.later(9.0, () => { this.npcs.forEach(n => n.gone = true); });
       this.later(9.2, () => this.g.toast('Mira: ...a gdzie on jest? Ktoś go widział?'));
+      this.npcs.forEach(n => this.buildEvacRoute(n));
     });
     return true;
+  }
+
+  /* punkt tuż za drzwiami, po stronie korytarza */
+  doorApproach(door) {
+    if (door.axis === 'x') {
+      const sign = door.pos[2] > 0 ? -1 : 1;
+      return [door.pos[0], 0, door.pos[2] + sign * 1.4];
+    }
+    const sign = door.pos[0] < 0 ? 1 : -1;
+    return [door.pos[0] + sign * 1.4, 0, door.pos[2]];
+  }
+
+  /* wyznacza trasę ewakuacyjną NPC-a z jego pokoju do ładowni i puszcza go biegiem;
+     po drodze otwiera drzwi (i rozgłasza to w multiplayer), żeby dało się nimi realnie przebiec */
+  buildEvacRoute(n) {
+    const doors = this.g.ship.doors;
+    const doorNames = { ren: 'Kuchnia', mira: 'Oranżeria', tobi: 'Maszynownia', kaja: 'Mostek' };
+    const myDoor = doors.find(d => d.name === doorNames[n.def.id]);
+    const cargoDoor = doors.find(d => d.name === 'Ładownia');
+    const openDoor = (d) => {
+      if (!d || d.target > 0.5) return;
+      d.target = 1; d.timer = 0;
+      this.g.net.sendDoor(doors.indexOf(d), 1);
+    };
+    const path = [];
+    if (myDoor) {
+      openDoor(myDoor);
+      path.push([myDoor.pos[0], 0, myDoor.pos[2]]);
+      path.push(this.doorApproach(myDoor));
+    }
+    if (cargoDoor) {
+      openDoor(cargoDoor);
+      const corridorZ = path.length ? path[path.length - 1][2] : 0;
+      path.push([cargoDoor.pos[0], 0, clamp(corridorZ, -1.4, 1.4)]);
+      path.push(this.doorApproach(cargoDoor));
+    }
+    path.push([21.5, 0, -7]);
+    n.path = path;
+    n.running = true;
+    n.runPhase = Math.random() * 6;
+    n.speed = 4.8 + Math.random() * 1.3;
   }
 
   onCargoReached() {
@@ -419,9 +461,27 @@ class Story {
       if (r && r.id === 'cargo') this.onCargoReached();
     }
 
-    // obracanie postaci w stronę gracza, gdy blisko
     for (const n of this.npcs) {
       if (n.gone) continue;
+
+      // ewakuacja: biegiem po wyznaczonej trasie do ładowni, twarzą w kierunku ruchu
+      if (n.running && n.path && n.path.length) {
+        const target = n.path[0];
+        const dx = target[0] - n.pos[0], dz = target[2] - n.pos[2];
+        const d = Math.hypot(dx, dz);
+        if (d < 0.35) { n.path.shift(); }
+        else {
+          const step = Math.min(d, n.speed * dt);
+          n.pos[0] += dx / d * step;
+          n.pos[2] += dz / d * step;
+          n.yaw = Math.atan2(dx, dz);
+        }
+        n.runPhase = (n.runPhase || 0) + dt * 9;
+        if (!n.path.length) n.running = false;
+        continue;
+      }
+
+      // w spoczynku: obracanie postaci w stronę gracza, gdy blisko
       const dx = p[0] - n.pos[0], dz = p[2] - n.pos[2];
       const d = Math.hypot(dx, dz);
       if (d < 5) {
@@ -454,8 +514,14 @@ class Story {
     const m = game.mats.tmp;
     for (const n of this.npcs) {
       if (n.gone) continue;
-      const bob = Math.sin(game.time * 1.5 + n.pos[0]) * 0.012;
-      r.draw(this.meshes[n.def.id], m4trs(m, n.pos[0], n.pos[1] + bob, n.pos[2], n.yaw, 1));
+      let bob, sy = 1;
+      if (n.running) {
+        bob = Math.abs(Math.sin(n.runPhase || 0)) * 0.09;
+        sy = 1 + Math.sin((n.runPhase || 0) * 2) * 0.04;
+      } else {
+        bob = Math.sin(game.time * 1.5 + n.pos[0]) * 0.012;
+      }
+      r.draw(this.meshes[n.def.id], m4trs(m, n.pos[0], n.pos[1] + bob, n.pos[2], n.yaw, 1, sy, 1));
     }
     // kapsuły w ładowni: zadokowane, dopóki nie przyjdzie ich kolej na odłączenie
     const slots = game.ship.podSlots;

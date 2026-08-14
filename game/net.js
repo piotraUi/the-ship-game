@@ -85,6 +85,24 @@ class Net {
       } else if (msg.t === 'skip_now') {
         this.skipCount = 0;
         if (this.onSkipNow) this.onSkipNow();
+      } else if (msg.t === 'world_state') {
+        const g = this.g;
+        if (msg.doors) {
+          for (const idx in msg.doors) {
+            const d = g.ship.doors[idx];
+            if (d) { d.target = msg.doors[idx]; d.open = msg.doors[idx]; }
+          }
+        }
+        if (msg.build) g.builder.load(msg.build);
+      } else if (msg.t === 'door') {
+        const d = this.g.ship.doors[msg.idx];
+        if (d && d.target !== msg.target) { d.target = msg.target; d.timer = 0; this.g.audio.door(); }
+      } else if (msg.t === 'build_place') {
+        this.g.builder.placeAt(msg.key, msg.item);
+        this.g.audio.place();
+      } else if (msg.t === 'build_remove') {
+        this.g.builder.removeAt(msg.key);
+        this.g.audio.remove();
       } else if (msg.t === 'players') {
         const seen = new Set();
         for (const p of msg.players) {
@@ -149,6 +167,20 @@ class Net {
   chat(text) {
     if (!this.ws || this.ws.readyState !== 1 || !text) return;
     this.ws.send(JSON.stringify({ t: 'chat', text: text }));
+  }
+
+  /* pełna synchronizacja świata statku: drzwi i budowanie widoczne u wszystkich */
+  sendDoor(idx, target) {
+    if (!this.ws || this.ws.readyState !== 1) return;
+    this.ws.send(JSON.stringify({ t: 'door', idx: idx, target: target }));
+  }
+  sendBuildPlace(key, item) {
+    if (!this.ws || this.ws.readyState !== 1) return;
+    this.ws.send(JSON.stringify({ t: 'build_place', key: key, item: item }));
+  }
+  sendBuildRemove(key) {
+    if (!this.ws || this.ws.readyState !== 1) return;
+    this.ws.send(JSON.stringify({ t: 'build_remove', key: key }));
   }
 
   /* rozgłasza start/lądowanie do innych graczy w tym samym pokoju */
@@ -225,13 +257,20 @@ class Net {
       for (const [id, p] of this.players) {
         if (p.zone !== myZone || !p.pos) continue;
         if (!p.dispPos) p.dispPos = p.pos.slice();
+        const prevX = p.dispPos[0], prevZ = p.dispPos[2];
         for (let i = 0; i < 3; i++) p.dispPos[i] = damp(p.dispPos[i], p.pos[i], 10, dt);
+        const spd = Math.hypot(p.dispPos[0] - prevX, p.dispPos[2] - prevZ) / Math.max(dt, 0.001);
         const mesh = this.meshFor(p.color || 0x5fd8ee);
         const emote = this.emotes.get(id);
         const sit = emote && emote.name === 'sit' && performance.now() - emote.t < 3000;
-        const bob = sit ? -0.35 : Math.sin(game.time * 6 + id.length) * 0.03;
+        const moving = spd > 0.7;
+        p.runPhase = (p.runPhase || 0) + dt * (moving ? clamp(spd * 1.9, 6, 11) : 2.2);
+        let bob, sy = 1;
+        if (sit) bob = -0.35;
+        else if (moving) { bob = Math.abs(Math.sin(p.runPhase)) * 0.08; sy = 1 + Math.sin(p.runPhase * 2) * 0.035; }
+        else bob = Math.sin(p.runPhase) * 0.02;
         // model patrzy lokalnie w +Z, a yaw silnika obraca lokalne +X do kierunku patrzenia — stąd +PI/2
-        r.draw(mesh, m4trs(m, p.dispPos[0], p.dispPos[1] + bob, p.dispPos[2], p.yaw + Math.PI / 2, 1));
+        r.draw(mesh, m4trs(m, p.dispPos[0], p.dispPos[1] + bob, p.dispPos[2], p.yaw + Math.PI / 2, 1, sy, 1));
       }
     }
     this.renderEmoteLabels(game);

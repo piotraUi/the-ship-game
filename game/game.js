@@ -200,10 +200,10 @@ class Game {
       if (this.buildMode) {
         const t = this.builder.target(this.eye(), this.dir());
         if (e.button === 0) {
-          if (this.builder.place(t)) { this.audio.place(); this.save(); }
+          if (t && this.builder.place(t)) { this.audio.place(); this.onBuildPlaced(t); }
           else this.audio.deny();
         } else if (e.button === 2) {
-          if (this.builder.remove(t)) { this.audio.remove(); this.save(); }
+          if (t && this.builder.remove(t)) { this.audio.remove(); this.onBuildRemoved(t); }
           else this.audio.deny();
         }
       }
@@ -437,7 +437,8 @@ class Game {
     const p = PLANETS[i];
     if (this.terrain && this.terrain.p === p) return;
     if (this.terrain) this.terrain.dispose();
-    this.terrain = new Terrain(this.gl, p);
+    const playerCount = Math.max(1, (this.net && this.net.roster.length) || 1);
+    this.terrain = new Terrain(this.gl, p, playerCount);
     if (this.skyDome) this.skyDome.dispose();
     this.skyDome = buildSkyDome(this.gl, p);
     const taken = this.collected[p.id] || [];
@@ -706,6 +707,7 @@ class Game {
       d.target = d.target > 0.5 ? 0 : 1;
       d.timer = 0;
       this.audio.door();
+      this.net.sendDoor(this.ship.doors.indexOf(d), d.target);
       return;
     }
     if (t.kind === 'sample') {
@@ -741,6 +743,7 @@ class Game {
         hatch.target = hatch.target > 0.5 ? 0 : 1;
         hatch.timer = 0;
         this.audio.door();
+        this.net.sendDoor(this.ship.doors.indexOf(hatch), hatch.target);
         this.toast(hatch.target > 0.5
           ? (this.loc.state === 'landed' ? 'Właz otwarty. Miłego spaceru!' : 'Właz otwarty. Uważaj — zero grawitacji.')
           : 'Właz zamknięty.');
@@ -798,6 +801,14 @@ class Game {
     this.toast(this.buildMode
       ? 'Tryb budowania: LPM stawiaj · PPM usuwaj · [R] obrót · [C] kolor · [1-0] wybór'
       : 'Tryb budowania wyłączony', this.buildMode);
+  }
+
+  /* budowanie widoczne u wszystkich graczy w tym samym pokoju */
+  onBuildPlaced(t) {
+    this.net.sendBuildPlace(this.builder.key(t.x, t.z), [this.builder.sel, this.builder.yaw, this.builder.colorIdx]);
+  }
+  onBuildRemoved(t) {
+    this.net.sendBuildRemove(this.builder.key(t.x, t.z));
   }
 
   /* proste emotki widoczne dla innych graczy w tej samej strefie */

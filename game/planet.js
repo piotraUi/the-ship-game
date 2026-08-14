@@ -214,9 +214,10 @@ class Space {
 
 /* ====================== TEREN PLANETY ====================== */
 class Terrain {
-  constructor(gl, planet) {
+  constructor(gl, planet, crewCount) {
     this.gl = gl;
     this.p = planet;
+    this.crewCount = crewCount || 1;
     this.half = TERRAIN_HALF;
     this.step = TERRAIN_STEP;
     this.n = Math.floor((this.half * 2) / this.step);
@@ -709,28 +710,37 @@ class Terrain {
     const away = Math.atan2(cz, cx);
     trail(cx, cz + 2, cx + Math.cos(away) * 46, cz + Math.sin(away) * 46, 22);
 
-    /* --- notatki do przeczytania --- */
+    /* --- notatki do przeczytania — treść zależy od tego, ile realnych osób leciało --- */
+    const cc = clamp(this.crewCount || 1, 1, 4);
+    const kajaText = [
+      'Wylądowałyśmy całe. Kapsuła 4 poszła dalej na północ. Powietrze da się oddychać — Mira miała rację.',
+      'Wylądowałyśmy całe, we dwie. Kapsuła 4 poszła dalej na północ. Powietrze da się oddychać — Mira miała rację.',
+      'Wylądowałyśmy całe, we trzy. Reszta poszła dalej na północ. Powietrze da się oddychać — Mira miała rację.',
+      'Cała nasza czwórka wylądowała bez szwanku. Powietrze da się oddychać — Mira miała rację. Trzymamy się razem.'
+    ][cc - 1];
+    const tobiText = [
+      'Alarm był próbny. Zrozumieliśmy to za późno, już po odłączeniu. Wracaliśmy po ciebie trzy razy, ale kapsuły lecą tylko w jedną stronę.',
+      'Alarm był próbny. Zrozumieliśmy to za późno. Wracaliśmy po was dwoje trzy razy, ale kapsuły lecą tylko w jedną stronę.',
+      'Alarm był próbny. Zrozumieliśmy to za późno. Wracaliśmy po całą waszą trójkę, ale kapsuły lecą tylko w jedną stronę.',
+      'Alarm był próbny. Zrozumieliśmy to za późno — a wy czworo i tak już byliście na miejscu, kiedy się odłączaliśmy.'
+    ][cc - 1];
+    const miraText = [
+      'Posadziłam tu nasiona mamy. Jeśli to czytasz, to znaczy, że jednak przyleciałeś. Idź na północ, wzdłuż śladów. Czekamy.',
+      'Posadziłam tu nasiona mamy. Jeśli to czytacie we dwoje, to znaczy, że jednak przylecieliście. Idźcie na północ, wzdłuż śladów. Czekamy.',
+      'Posadziłam tu nasiona mamy. Jeśli czyta to cała wasza trójka, to znaczy, że jednak przylecieliście. Idźcie na północ. Czekamy.',
+      'Posadziłam tu nasiona mamy — akurat na czworo więcej rąk do sadzenia. Idźcie na północ, wzdłuż śladów. Czekamy na całą waszą ekipę.'
+    ][cc - 1];
+    const renText = [
+      'Zostawiam czajnik przy ognisku. Wiedziałem, że w końcu przyjdziesz się napić.',
+      'Zostawiam dwa kubki przy ognisku. Wiedziałem, że w końcu tu dotrzecie, we dwoje.',
+      'Zostawiam trzy kubki przy ognisku. Wiedziałem, że cała wasza trójka w końcu tu dotrze.',
+      'Zostawiam cztery kubki przy ognisku — po jednym na każdego z was. Wiedziałem, że cała ekipa dotrze razem.'
+    ][cc - 1];
     this.notes = [
-      {
-        pos: [pods[0][0] + 2.0, H(pods[0][0] + 2.0, pods[0][1] + 1.6) + 0.5, pods[0][1] + 1.6],
-        title: 'Notatka Kai (nawigatorka)',
-        text: 'Wylądowałyśmy całe. Kapsuła 4 poszła dalej na północ. Powietrze da się oddychać — Mira miała rację.'
-      },
-      {
-        pos: [cx + 1.8, H(cx + 1.8, cz + 1.2) + 0.5, cz + 1.2],
-        title: 'Notatka Tobiego (mechanik)',
-        text: 'Alarm był próbny. Zrozumieliśmy to za późno, już po odłączeniu. Wracaliśmy po ciebie trzy razy, ale kapsuły lecą tylko w jedną stronę.'
-      },
-      {
-        pos: [cx - 5.4, H(cx - 5.4, cz + 3.6) + 0.5, cz + 3.6],
-        title: 'Notatka Miry (botaniczka)',
-        text: 'Posadziłam tu nasiona mamy. Jeśli to czytasz, to znaczy, że jednak przyleciałeś. Idź na północ, wzdłuż śladów. Czekamy.'
-      },
-      {
-        pos: [cx + Math.cos(away) * 44, H(cx + Math.cos(away) * 44, cz + Math.sin(away) * 44) + 0.5, cz + Math.sin(away) * 44],
-        title: 'Notatka Rena (kucharz)',
-        text: 'Zostawiam czajnik przy ognisku. Wiedziałem, że w końcu przyjdziesz się napić.'
-      }
+      { pos: [pods[0][0] + 2.0, H(pods[0][0] + 2.0, pods[0][1] + 1.6) + 0.5, pods[0][1] + 1.6], title: 'Notatka Kai (nawigatorka)', text: kajaText },
+      { pos: [cx + 1.8, H(cx + 1.8, cz + 1.2) + 0.5, cz + 1.2], title: 'Notatka Tobiego (mechanik)', text: tobiText },
+      { pos: [cx - 5.4, H(cx - 5.4, cz + 3.6) + 0.5, cz + 3.6], title: 'Notatka Miry (botaniczka)', text: miraText },
+      { pos: [cx + Math.cos(away) * 44, H(cx + Math.cos(away) * 44, cz + Math.sin(away) * 44) + 0.5, cz + Math.sin(away) * 44], title: 'Notatka Rena (kucharz)', text: renText }
     ];
   }
 

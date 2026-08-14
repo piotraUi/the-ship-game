@@ -161,22 +161,33 @@ class Builder {
   place(t) {
     if (!t) return false;
     const k = this.key(t.x, t.z);
-    if (!this.cells[k]) this.cells[k] = [];
-    if (this.cells[k].length >= 6) return false;
-    this.cells[k].push({ t: this.sel, yaw: this.yaw, c: this.colorIdx });
-    this.rebuild();
+    if ((this.cells[k] || []).length >= 6) return false;
+    this.placeAt(k, [this.sel, this.yaw, this.colorIdx]);
     return true;
   }
 
   remove(t) {
     if (!t) return false;
     const k = this.key(t.x, t.z);
-    const s = this.cells[k];
-    if (!s || !s.length) return false;
-    s.pop();
-    if (!s.length) delete this.cells[k];
-    this.rebuild();
+    if (!this.cells[k] || !this.cells[k].length) return false;
+    this.removeAt(k);
     return true;
+  }
+
+  /* stosuje umieszczenie/usunięcie przyszłe z sieci (od innego gracza) — bez rzutowania promienia */
+  placeAt(key, item) {
+    if (!this.cells[key]) this.cells[key] = [];
+    if (this.cells[key].length >= 6) return;
+    this.cells[key].push({ t: item[0], yaw: item[1], c: item[2] || 0 });
+    this.rebuild();
+  }
+
+  removeAt(key) {
+    const s = this.cells[key];
+    if (!s || !s.length) return;
+    s.pop();
+    if (!s.length) delete this.cells[key];
+    this.rebuild();
   }
 
   rebuild() {
