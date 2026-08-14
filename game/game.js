@@ -425,29 +425,11 @@ class Game {
   }
 
   /* ======================= ZAPIS ======================= */
-  save() {
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({
-        build: this.builder.serialize(),
-        res: this.res, mood: this.mood,
-        loc: this.loc, visited: this.visited, collected: this.collected,
-        storyDone: this.storyDone || this.story.phase === 'free'
-      }));
-    } catch (e) { /* brak miejsca – trudno */ }
-  }
+  // celowo bez trwałego zapisu – każda rozgrywka (i każdy powrót do lobby) zaczyna się od nowa
+  save() { }
 
   load() {
-    let d = null;
-    try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { d = null; }
-    if (!d) return;
-    if (d.build) this.builder.load(d.build);
-    if (d.storyDone) { this.storyDone = true; this.story.phase = 'free'; }
-    if (d.res) this.res = d.res;
-    if (typeof d.mood === 'number') this.mood = d.mood;
-    if (d.visited) this.visited = d.visited;
-    if (d.collected) this.collected = d.collected;
-    if (d.loc && d.loc.state !== 'landed') this.loc = d.loc;   // start zawsze na statku
-    else if (d.loc && d.loc.planet !== null && d.loc.planet !== undefined) this.loc = { state: 'orbit', planet: d.loc.planet };
+    try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* nieistotne */ }
   }
 
   /* buduje teren/niebo danej planety tylko jeśli jeszcze nie jest gotowy dla niej */

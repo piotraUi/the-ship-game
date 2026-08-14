@@ -44,10 +44,20 @@ const CREW = [
   }
 ];
 
+/* liczba realnych graczy zmienia obsadę AI-załogi: im więcej ludzi na pokładzie,
+   tym mniej postaci trzeba symulować — Kaja zostaje zawsze, bo to ona nazywa Verdana Prime */
+function crewForPlayers(n) {
+  const order = ['kaja', 'tobi', 'mira', 'ren'];
+  const keep = clamp(5 - n, 1, 4);
+  const keepIds = new Set(order.slice(0, keep));
+  return CREW.filter(c => keepIds.has(c.id));
+}
+
 class Story {
   constructor(game) {
     this.g = game;
     this.phase = 'none';
+    this.crew = CREW;
     this.met = {};
     this.metCount = 0;
     this.objective = '';
@@ -73,7 +83,9 @@ class Story {
       this.meshes.pod = this.buildPod(gl);
       this.meshes.dockPod = this.buildDockedPod(gl);
     }
-    this.npcs = CREW.map(c => ({ def: c, pos: c.pos.slice(), yaw: c.yaw, line: 0, gone: false }));
+    const playerCount = Math.max(1, (this.g.net && this.g.net.roster.length) || 1);
+    this.crew = crewForPlayers(playerCount);
+    this.npcs = this.crew.map(c => ({ def: c, pos: c.pos.slice(), yaw: c.yaw, line: 0, gone: false }));
     this.podTrigger = null;
     this.phase = 'wake';
     this.setObjective('Wstań i wyjdź ze swojej kajuty');
@@ -81,7 +93,13 @@ class Story {
     this.g.p.yaw = -0.6;
     this.g.p.pitch = -0.1;
     this.g.p.vel = [0, 0, 0];
-    this.g.toast('Trzy miesiące od startu. Statek "The Ship", gdzieś między gwiazdami.', true);
+    const introByCount = {
+      1: 'Trzy miesiące od startu. Statek "The Ship", gdzieś między gwiazdami.',
+      2: 'Trzy miesiące od startu. Tym razem lecicie we dwoje — reszta załogi czeka gdzieś na pokładzie.',
+      3: 'Trzy miesiące od startu. Płyniecie razem we troje, a na pokładzie jest jeszcze trochę znajomych twarzy.',
+      4: 'Trzy miesiące od startu. Cała wasza czwórka jest już na miejscu — reszta załogi to już tylko jedna znajoma twarz.'
+    };
+    this.g.toast(introByCount[Math.min(4, playerCount)], true);
   }
 
   buildPod(gl) {
@@ -211,12 +229,12 @@ class Story {
         this.met[d.npc.def.id] = true;
         this.metCount++;
         this.g.mood = Math.min(100, this.g.mood + 6);
-        if (this.metCount >= CREW.length) {
+        if (this.metCount >= this.crew.length) {
           this.phase = 'rest';
           this.setObjective('Wróć do kajuty i odpocznij (łóżko: [E])');
           this.g.toast('Dni mijają spokojnie. Dobrze wam razem.', true);
         } else {
-          this.setObjective('Poznaj załogę (' + this.metCount + '/' + CREW.length + ')');
+          this.setObjective('Poznaj załogę (' + this.metCount + '/' + this.crew.length + ')');
         }
       }
       return;
@@ -391,8 +409,10 @@ class Story {
       const r = this.g.ship.roomAt(p[0], p[2]);
       if (!r || r.id !== 'quarters') {
         this.phase = 'meet';
-        this.setObjective('Poznaj załogę (0/' + CREW.length + ')');
-        this.g.toast('Gdzieś na statku jest czwórka ludzi, z którymi tu utknąłeś. Na szczęście to dobrzy ludzie.', true);
+        this.setObjective('Poznaj załogę (0/' + this.crew.length + ')');
+        const n = this.crew.length;
+        const who = n === 1 ? 'jedna osoba' : (n < 5 ? n + ' osoby' : n + ' osób');
+        this.g.toast('Gdzieś na statku jest ' + who + ', z którymi tu utknąłeś. Na szczęście to dobrzy ludzie.', true);
       }
     } else if (this.phase === 'alarm') {
       const r = this.g.ship.roomAt(p[0], p[2]);

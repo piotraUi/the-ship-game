@@ -230,7 +230,8 @@ class Net {
         const emote = this.emotes.get(id);
         const sit = emote && emote.name === 'sit' && performance.now() - emote.t < 3000;
         const bob = sit ? -0.35 : Math.sin(game.time * 6 + id.length) * 0.03;
-        r.draw(mesh, m4trs(m, p.dispPos[0], p.dispPos[1] + bob, p.dispPos[2], p.yaw + Math.PI, 1));
+        // model patrzy lokalnie w +Z, a yaw silnika obraca lokalne +X do kierunku patrzenia — stąd +PI/2
+        r.draw(mesh, m4trs(m, p.dispPos[0], p.dispPos[1] + bob, p.dispPos[2], p.yaw + Math.PI / 2, 1));
       }
     }
     this.renderEmoteLabels(game);
